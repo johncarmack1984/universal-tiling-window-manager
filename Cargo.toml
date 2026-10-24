@@ -1,0 +1,70 @@
+[workspace]
+resolver = "3"
+members = [
+    "apps/desktop",
+    "crates/utwm-config",
+    "crates/utwm-layout",
+    "crates/utwm-windows",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+repository = "https://github.com/johncarmack1984/universal-tiling-window-manager"
+authors = ["John Carmack"]
+
+# Shared lint policy; members opt in with `[lints] workspace = true`. Production
+# code never unwraps: a window manager that panics takes every shortcut down with
+# it, so failures are logged and the action is skipped. `expect` stays legal: it
+# documents an invariant. utwm-windows is the one crate that talks to Win32, so
+# it carries its own copy of this table with `unsafe_code` relaxed to `deny`.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+panic_in_result_fn = "warn"
+# Geometry is f64 math landing in i32 pixels and u16 scan codes. Every lossy `as`
+# goes through a checked conversion or a helper that clamps first.
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+cast_possible_wrap = "warn"
+cast_lossless = "warn"
+# Rect equality decides whether a press is a repeat. Comparisons happen on
+# integer pixel rects, never on floats.
+float_cmp = "warn"
+float_cmp_const = "warn"
+
+[workspace.dependencies]
+utwm-config = { path = "crates/utwm-config" }
+utwm-layout = { path = "crates/utwm-layout" }
+utwm-windows = { path = "crates/utwm-windows" }
+arc-swap = "1.7"
+insta = "1.43"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+toml = "0.9"
+tracing = "0.1"
+
+# Small, optimized release binaries, as Tauri recommends
+# (https://v2.tauri.app/concept/size). A background utility that is always
+# running should cost as little as possible to keep resident.
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+incremental = false
+opt-level = "s"
+strip = true
+
+# insta's snapshot diffs are much faster to compute with an optimized `similar`.
+[profile.dev.package.insta]
+opt-level = 3
+[profile.dev.package.similar]
+opt-level = 3

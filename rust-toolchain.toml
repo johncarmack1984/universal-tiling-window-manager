@@ -1,0 +1,6 @@
+# Pins the toolchain for local builds and CI alike. Tracks stable: Tauri 3
+# needs 1.95+, and stable stays ahead of that on its own. The components keep
+# rustfmt and clippy present wherever the checks run.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

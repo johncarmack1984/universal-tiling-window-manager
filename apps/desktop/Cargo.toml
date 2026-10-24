@@ -1,0 +1,40 @@
+[package]
+name = "universal-tiling-window-manager"
+description = "Rectangle Pro's keyboard shortcuts on Windows, configured by the Mac's own export"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+default-run = "universal-tiling-window-manager"
+
+[[bin]]
+name = "universal-tiling-window-manager"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "=3.0.0-alpha.4", features = [] }
+
+[dependencies]
+utwm-config.workspace = true
+utwm-layout.workspace = true
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi"] }
+# Tauri 3 is in alpha; every Tauri crate is pinned to an exact release so an
+# alpha bump can't change the app underneath a build.
+tauri = { version = "=3.0.0-alpha.5", features = ["tray-icon", "image-png"] }
+tauri-runtime-wry = "=3.0.0-alpha.5"
+tauri-plugin-single-instance = "=3.0.0-alpha.3"
+
+[target.'cfg(windows)'.dependencies]
+utwm-windows.workspace = true
+
+[features]
+# Release builds embed their configuration; `cargo install` builds this way.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[lints]
+workspace = true

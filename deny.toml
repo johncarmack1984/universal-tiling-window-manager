@@ -1,0 +1,42 @@
+# cargo-deny configuration. Run: cargo deny check
+
+[graph]
+targets = [{ triple = "x86_64-pc-windows-msvc" }, { triple = "aarch64-pc-windows-msvc" }]
+all-features = true
+
+[advisories]
+db-urls = ["https://github.com/RustSec/advisory-db"]
+unmaintained = "workspace"
+yanked = "deny"
+ignore = []
+
+[licenses]
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "ISC",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.8
+private = { ignore = true }
+
+[bans]
+# Tauri's tree carries several versions of the windows crates; surface them
+# without failing.
+multiple-versions = "warn"
+wildcards = "deny"
+# The workspace crates depend on each other by path; none is published.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

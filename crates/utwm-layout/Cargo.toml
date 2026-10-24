@@ -1,0 +1,19 @@
+[package]
+name = "utwm-layout"
+description = "Rectangle's window calculations, ported: where each action puts a window"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+utwm-config.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+
+[lints]
+workspace = true

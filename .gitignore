@@ -1,0 +1,12 @@
+/target
+**/*.rs.bk
+*.pending-snap
+*.snap.new
+
+# Tauri build output and generated schemas
+/apps/desktop/gen
+
+# Local Claude Code config
+/CLAUDE.md
+/CLAUDE.local.md
+.claude/
