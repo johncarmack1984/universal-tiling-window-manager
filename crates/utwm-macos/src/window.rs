@@ -8,6 +8,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::time::Duration;
 
 use objc2_app_kit::{NSRunningApplication, NSWorkspace};
 use objc2_application_services::AXError;
@@ -51,6 +52,13 @@ const ENHANCED_UI: &str = "AXEnhancedUserInterface";
 /// Elements remembered before starting over; a forgotten window is simply
 /// looked up again.
 const REMEMBERED: usize = 256;
+
+/// How long to let a move to another display settle before each retry.
+const SETTLE_WAITS: [Duration; 3] = [
+    Duration::from_millis(25),
+    Duration::from_millis(75),
+    Duration::from_millis(200),
+];
 
 thread_local! {
     static ELEMENTS: RefCell<HashMap<Window, Element>> = RefCell::new(HashMap::new());
@@ -223,7 +231,8 @@ fn without_animation<T>(pid: i32, change: impl FnOnce() -> T) -> T {
 /// Like Rectangle's `setFrame`, it sets the size, then the position, then the
 /// size again: the first makes the window fit where it is going, the second
 /// takes effect once it is on a display big enough for it. A window sent to
-/// another display is raised there too, as Rectangle does.
+/// another display gets its frame again once the move settles, if it needs it,
+/// and is raised there, as Rectangle does.
 pub fn place(
     window: Window,
     target: PixelRect,
@@ -257,6 +266,21 @@ pub fn place(
         return Err(error);
     }
     if across_displays {
+        // For a moment after a window crosses to another display, macOS still
+        // holds it to the old display's limits, so a window bound for a taller
+        // display comes up short. Once the move has settled the size goes
+        // through, so set it again until it takes.
+        for wait in SETTLE_WAITS {
+            if frame_of(&element) == Some(target) {
+                break;
+            }
+            std::thread::sleep(wait);
+            let _ = without_animation(window.pid, || {
+                element
+                    .set_size(SIZE, size)
+                    .and_then(|()| element.set_point(POSITION, origin))
+            });
+        }
         let _ = element.perform("AXRaise");
     }
     frame_of(&element).ok_or(PlaceError::Gone)

@@ -10,7 +10,7 @@ use utwm_config::settings::{CornerAxis, RepeatMode, Settings};
 
 use crate::geometry::{Frame, PixelRect, swift_float};
 use crate::history::{ActionKey, LastAction};
-use crate::screens::UsableScreens;
+use crate::screens::{Direction, UsableScreens, neighbor};
 use crate::sub_action::SubAction;
 
 /// Everything a calculation may read.
@@ -194,6 +194,7 @@ fn repeated_size(ctx: &Ctx<'_>) -> Option<f64> {
 /// `LeftRightHalfCalculation.calculate`.
 fn left_right_half(ctx: &Ctx<'_>) -> CalcResult {
     match ctx.mode() {
+        RepeatMode::Directional => directional_half(ctx),
         RepeatMode::AcrossMonitor => across_displays(ctx),
         RepeatMode::AcrossAndResize => {
             if ctx.screens.len() == 1 {
@@ -295,6 +296,53 @@ fn right_across(ctx: &Ctx<'_>, screen: usize, original: bool) -> CalcResult {
         sub: None,
         remember_pre_maximize: None,
         forget_last: false,
+    }
+}
+
+/// Rectangle Pro's halves: pressed again, a half moves on to the display in
+/// its direction, landing on the half facing the display it came from (← from
+/// a left half goes to the right half of the display to the left, ↑ from a top
+/// half to the bottom half of the display above), and the next press takes it
+/// to the far half. At the outermost display it stays where it is.
+fn directional_half(ctx: &Ctx<'_>) -> CalcResult {
+    let toward = match ctx.action {
+        ActionId::LeftHalf => Some((Direction::Left, ActionId::RightHalf)),
+        ActionId::RightHalf => Some((Direction::Right, ActionId::LeftHalf)),
+        ActionId::TopHalf => Some((Direction::Up, ActionId::BottomHalf)),
+        ActionId::BottomHalf => Some((Direction::Down, ActionId::TopHalf)),
+        _ => None,
+    };
+    let current = ctx.screens.current;
+    let (screen, action) = toward
+        .filter(|_| ctx.is_repeated(ctx.action))
+        .and_then(|(direction, facing)| {
+            neighbor(&ctx.screens.ordered, current, direction).map(|next| (next, facing))
+        })
+        .unwrap_or((current, ctx.action));
+    CalcResult {
+        rect: first_half(ctx.settings, ctx.visible_of(screen), action),
+        screen,
+        resulting_action: action,
+        sub: None,
+        remember_pre_maximize: None,
+        forget_last: false,
+    }
+}
+
+/// The first press of any of the four halves.
+fn first_half(settings: &Settings, visible: Frame, action: ActionId) -> Frame {
+    match action {
+        ActionId::TopHalf => vertical_rect(
+            visible,
+            Side::Leading,
+            split(settings, Side::Leading, false),
+        ),
+        ActionId::BottomHalf => vertical_rect(
+            visible,
+            Side::Trailing,
+            split(settings, Side::Trailing, false),
+        ),
+        _ => half_first(settings, visible, action),
     }
 }
 
@@ -1511,6 +1559,9 @@ pub(crate) fn calculate(ctx: &Ctx<'_>) -> Option<CalcResult> {
     let simple = |rect: RectResult| Some(ctx.result(rect));
     match ctx.action {
         ActionId::LeftHalf | ActionId::RightHalf => Some(left_right_half(ctx)),
+        ActionId::TopHalf | ActionId::BottomHalf if ctx.mode() == RepeatMode::Directional => {
+            Some(directional_half(ctx))
+        }
         ActionId::TopHalf | ActionId::BottomHalf => simple(top_bottom_half(ctx)),
         ActionId::CenterHalf => simple(center_half(ctx)),
         ActionId::TopLeft | ActionId::TopRight | ActionId::BottomLeft | ActionId::BottomRight => {

@@ -67,8 +67,8 @@ pub struct Controller {
     asked_for_access: bool,
     /// The last application window in the foreground, for tray menu actions:
     /// by the time a menu item is clicked on Windows the tray itself has the
-    /// focus. The Mac's menu bar never takes it, so there the foreground
-    /// window is still the one meant.
+    /// focus. The Mac's menu bar never takes it, so the Mac keeps none and
+    /// acts on the foreground window.
     last_target: Option<Window>,
 }
 
@@ -89,7 +89,11 @@ impl Controller {
             engine: Engine::new(),
             #[cfg(target_os = "macos")]
             asked_for_access: false,
-            last_target: window::foreground(),
+            last_target: if cfg!(windows) {
+                window::foreground()
+            } else {
+                None
+            },
         }
     }
 

@@ -122,6 +122,60 @@ pub fn containing(screens: &[Screen], window: PixelRect) -> Option<usize> {
     best.or_else(|| screens.iter().position(|screen| screen.primary))
 }
 
+/// A way across the desktop, for finding the display beside another.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+/// The display beside `screens[current]` in `direction`: one lying wholly on
+/// that side and overlapping it across the other axis, the nearest first, then
+/// the one sharing most of that edge. By position, not by Rectangle's display
+/// order, so it never wraps around: at the outermost display there is none.
+pub fn neighbor(screens: &[Screen], current: usize, direction: Direction) -> Option<usize> {
+    let from = screens.get(current)?.frame;
+    screens
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != current)
+        .filter_map(|(index, screen)| {
+            let to = screen.frame;
+            let (beyond, gap, shared) = match direction {
+                Direction::Left => (
+                    to.right <= from.left,
+                    from.left - to.right,
+                    overlap((from.top, from.bottom), (to.top, to.bottom)),
+                ),
+                Direction::Right => (
+                    to.left >= from.right,
+                    to.left - from.right,
+                    overlap((from.top, from.bottom), (to.top, to.bottom)),
+                ),
+                Direction::Up => (
+                    to.bottom <= from.top,
+                    from.top - to.bottom,
+                    overlap((from.left, from.right), (to.left, to.right)),
+                ),
+                Direction::Down => (
+                    to.top >= from.bottom,
+                    to.top - from.bottom,
+                    overlap((from.left, from.right), (to.left, to.right)),
+                ),
+            };
+            (beyond && shared > 0).then_some((index, gap, shared))
+        })
+        .min_by_key(|(_, gap, shared)| (*gap, std::cmp::Reverse(*shared)))
+        .map(|(index, _, _)| index)
+}
+
+/// How much two spans along one axis share.
+fn overlap(a: (i32, i32), b: (i32, i32)) -> i32 {
+    (a.1.min(b.1) - a.0.max(b.0)).max(0)
+}
+
 fn adjacent(count: usize, current: usize) -> Option<(usize, usize)> {
     match count {
         0 | 1 => None,
@@ -216,6 +270,41 @@ mod tests {
         let right = screen(1920, 0, 1920, 1080);
         let straddling = PixelRect::new(1800, 100, 2400, 600);
         assert_eq!(containing(&[left, right], straddling), Some(1));
+    }
+
+    #[test]
+    fn neighbors_go_by_position_and_stop_at_the_edge() {
+        // John's desk: a laptop, and a 4K display to its right, raised.
+        let laptop = screen(0, 0, 2056, 1329);
+        let wide = screen(2056, -669, 3840, 2160);
+        let screens = [laptop, wide];
+        assert_eq!(neighbor(&screens, 0, Direction::Right), Some(1));
+        assert_eq!(neighbor(&screens, 1, Direction::Left), Some(0));
+        assert_eq!(neighbor(&screens, 0, Direction::Left), None);
+        assert_eq!(neighbor(&screens, 1, Direction::Right), None);
+        // Neither sits above or below the other.
+        assert_eq!(neighbor(&screens, 0, Direction::Up), None);
+        assert_eq!(neighbor(&screens, 1, Direction::Down), None);
+
+        let above = screen(0, -1440, 2560, 1440);
+        let stacked = [laptop, above];
+        assert_eq!(neighbor(&stacked, 0, Direction::Up), Some(1));
+        assert_eq!(neighbor(&stacked, 1, Direction::Down), Some(0));
+        assert_eq!(neighbor(&stacked, 1, Direction::Up), None);
+    }
+
+    #[test]
+    fn the_nearest_display_wins_then_the_longest_shared_edge() {
+        let middle = screen(0, 0, 1920, 1080);
+        let near = screen(1920, 0, 1920, 1080);
+        let far = screen(3840, 0, 1920, 1080);
+        assert_eq!(neighbor(&[middle, far, near], 0, Direction::Right), Some(2));
+        let short = screen(-1920, 900, 1920, 1080);
+        let long = screen(-1920, 0, 1920, 1080);
+        assert_eq!(
+            neighbor(&[middle, short, long], 0, Direction::Left),
+            Some(2)
+        );
     }
 
     #[test]

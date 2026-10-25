@@ -2,7 +2,7 @@
 
 Rectangle Pro's keyboard shortcuts on Windows and the Mac, configured by the export Rectangle Pro writes.
 
-The export is the configuration on both machines. Put it in your dotfiles and the same keys throw windows to the same places everywhere: on the Mac, exactly the shortcuts Rectangle Pro bound; on Windows, the keys in the same positions, so ⌃⌥← is Ctrl+Alt+Left. A second press grows the half to two thirds and a third shrinks it to one third, as Rectangle does. Window positions are computed by a port of Rectangle's own calculations, so a left third is the same third, down to the pixel rounding.
+The export is the configuration on both machines. Put it in your dotfiles and the same keys throw windows to the same places everywhere: on the Mac, exactly the shortcuts Rectangle Pro bound; on Windows, the keys in the same positions, so ⌃⌥← is Ctrl+Alt+Left. Pressed again, a half moves on to the display in that direction, as Rectangle Pro does: a second ⌃⌥← puts the window in the right half of the display to the left, a third in that display's left half, and at the outermost display a repeat leaves it where it is; →, ↑ and ↓ work the same way. Window positions are computed by a port of Rectangle's own calculations, so a left third is the same third, down to the pixel rounding.
 
 On the Mac it runs in Rectangle Pro's place. It lives in the tray on Windows and in the menu bar on the Mac, and it has no settings window: the export is the settings, `config.toml` holds whatever differs between the machines, and Rectangle Pro, if you keep it installed, can still edit the shortcuts and export them again.
 
@@ -120,7 +120,7 @@ leftHalf = "ctrl+option+h"
 ## What it does
 
 On both machines, all of Rectangle's single-window actions up to eighths, with Rectangle's repeat behaviour for each:
-- halves (½ → ⅔ → ⅓ with the default cycle sizes) and center half;
+- halves, which on a repeat move on to the display in that direction (from a Rectangle Pro export) or cycle ½ → ⅔ → ⅓ (from free Rectangle's, by default), and center half;
 - corners;
 - thirds and two thirds;
 - fourths and three fourths;

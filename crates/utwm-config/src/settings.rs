@@ -5,7 +5,7 @@
 //! at v2.0.4. A setting Rectangle Pro dropped from its export (Pro 236 omits
 //! `applyGapsToMaximize`, `widthStepSize` and others) falls back the same way.
 
-use crate::export::{Export, Setting};
+use crate::export::{Export, ExportKind, Setting};
 
 /// What repeating an action does (`subsequentExecutionMode`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,9 +23,24 @@ pub enum RepeatMode {
     ResizeAndCycleQuadrants,
     /// A repeated half jumps to the opposite half.
     SwitchSides,
+    /// A repeated half moves on to the display in that direction, landing on
+    /// the half facing the display it came from, and stays put at the
+    /// outermost display. Rectangle Pro's first choice.
+    Directional,
 }
 
 impl RepeatMode {
+    /// `subsequentExecutionMode` as the app that wrote the export numbers it.
+    /// Rectangle Pro's 0 moves a repeated half on to the display in that
+    /// direction (what the author's copy does with it), where free
+    /// Rectangle's 0 cycles sizes; Pro's other values follow Rectangle's.
+    fn from_export(value: i64, kind: ExportKind) -> Self {
+        match (value, kind) {
+            (0, ExportKind::RectanglePro) => Self::Directional,
+            (value, _) => Self::from_int(value),
+        }
+    }
+
     fn from_int(value: i64) -> Self {
         match value {
             1 => Self::AcrossMonitor,
@@ -58,6 +73,9 @@ impl RepeatMode {
             Self::CycleMonitor => "cycle through displays",
             Self::ResizeAndCycleQuadrants => "cycle positions on quadrants, cycle sizes on side",
             Self::SwitchSides => "switch to the opposite side on half actions",
+            Self::Directional => {
+                "move halves on to the display in that direction, stopping at the outermost"
+            }
         }
     }
 }
@@ -293,11 +311,14 @@ impl Settings {
         let flag = |key: &str| get(key).and_then(Setting::as_bool).unwrap_or(false);
         let tri = |key: &str| TriState::from_setting(get(key));
 
-        let mut settings = Self::default();
+        let mut settings = Self {
+            repeat_mode: RepeatMode::from_export(
+                int("subsequentExecutionMode").unwrap_or(0),
+                export.kind(),
+            ),
+            ..Self::default()
+        };
 
-        if let Some(mode) = int("subsequentExecutionMode") {
-            settings.repeat_mode = RepeatMode::from_int(mode);
-        }
         if flag("cycleSizesIsChanged") {
             settings.cycle_sizes = CycleSizes::from_bits(int("selectedCycleSizes").unwrap_or(0));
         }
@@ -449,7 +470,7 @@ mod tests {
                "screensOrderedByX": { "int": 3 }, "moveFixedSizeToEdge": { "int": 1 },
                "repeatedMaximizeMode": { "int": 4 }, "disabledApps": {}"#,
         ));
-        assert_eq!(settings.repeat_mode, RepeatMode::Resize);
+        assert_eq!(settings.repeat_mode, RepeatMode::Directional);
         assert_eq!(settings.cycle_sizes.describe(), "½ → ⅔ → ⅓");
         assert!((settings.almost_maximize_height - 0.9).abs() < 1e-9);
         assert!((settings.minimum_window_width - 0.1).abs() < 1e-9);
@@ -462,6 +483,26 @@ mod tests {
             .map(|(key, _)| key.as_str())
             .collect();
         assert_eq!(unapplied, ["smallerLargerOffsetV2", "repeatedMaximizeMode"]);
+    }
+
+    #[test]
+    fn repeat_mode_zero_means_what_the_exporting_app_means() {
+        let free = Export::parse(
+            r#"{ "bundleId": "com.knollsoft.Rectangle", "version": "111", "shortcuts": {},
+                 "defaults": { "subsequentExecutionMode": { "int": 0 } } }"#,
+        )
+        .expect("parses");
+        assert_eq!(Settings::from_export(&free).repeat_mode, RepeatMode::Resize);
+        assert_eq!(
+            Settings::from_export(&export("")).repeat_mode,
+            RepeatMode::Directional,
+            "a Pro export without the setting gets Pro's first choice"
+        );
+        assert_eq!(
+            Settings::from_export(&export(r#""subsequentExecutionMode": { "int": 1 }"#))
+                .repeat_mode,
+            RepeatMode::AcrossMonitor
+        );
     }
 
     #[test]
