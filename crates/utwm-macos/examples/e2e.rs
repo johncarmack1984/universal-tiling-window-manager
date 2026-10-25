@@ -176,7 +176,10 @@ mod e2e {
             };
             // Which action a cycling shortcut runs depends on the window's
             // history in the app, which this check can't see.
-            if config.binding_for(&chord).is_some_and(|binding| binding.is_cycle()) {
+            if config
+                .binding_for(&chord)
+                .is_some_and(|binding| binding.is_cycle())
+            {
                 println!("skip {action}: its shortcut cycles through several actions");
                 continue;
             }
