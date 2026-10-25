@@ -23,7 +23,7 @@ On the Mac it is an app, Window Manager. Download `Window-Manager_<version>_univ
 
 Moving other apps' windows takes Accessibility access. Until the app has it, the first line of its menu says so; clicking that line, or pressing any shortcut, brings up macOS's prompt and opens System Settings → Privacy & Security → Accessibility with the app in the list, ready to switch on. Tick **Start at login** in its menu to have it start with the Mac; System Settings → General → Login Items lists it under Open at Login.
 
-It keeps itself up to date. A minute after it starts, and every six hours after that, it looks for a newer release; when there is one it downloads it, checks its signature against the key built into the app, puts it in place of the copy in /Applications and restarts, keeping its Accessibility access, since every release carries the same signature. **Check for updates** in its menu, or `universal-tiling-window-manager update`, looks right away. While shortcuts are paused it waits to be asked, since the restart would resume them.
+It keeps itself up to date. A minute after it starts, and every six hours after that, it looks for a newer release; when there is one it downloads it, checks its signature against the key built into the app, puts it in place of the copy in /Applications and restarts, keeping its Accessibility access, since every release is signed with the same Developer ID. **Check for updates** in its menu, or `universal-tiling-window-manager update`, looks right away. While shortcuts are paused it waits to be asked, since the restart would resume them.
 
 To build it from a clone instead, with [just](https://just.systems):
 
