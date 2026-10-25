@@ -1,0 +1,74 @@
+[package]
+name = "utwm-e2e"
+description = "End-to-end checks against the running app, one per platform, and the tools they use"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+default-run = "utwm-e2e"
+
+[dependencies]
+utwm-config.workspace = true
+utwm-layout.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+utwm-windows.workspace = true
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+utwm-macos.workspace = true
+dispatch2 = { version = "0.3", default-features = false, features = ["std", "objc2"] }
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "libc",
+    "NSApplication",
+    "NSGraphics",
+    "NSResponder",
+    "NSRunningApplication",
+    "NSScreen",
+    "NSView",
+    "NSWindow",
+    "NSWorkspace",
+] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = [
+    "std",
+    "CGEvent",
+    "CGEventTypes",
+    "CGRemoteOperation",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSArray",
+    "NSGeometry",
+    "NSString",
+] }
+
+# The checks open their own windows and post keystrokes, which takes the same
+# operating system calls the platform crates make, so like them this crate
+# allows unsafe code and requires every unsafe block to say why it is sound.
+[lints.rust]
+unsafe_code = "allow"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+panic_in_result_fn = "warn"
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+cast_possible_wrap = "warn"
+cast_lossless = "warn"
+float_cmp = "warn"
+float_cmp_const = "warn"
+undocumented_unsafe_blocks = "warn"

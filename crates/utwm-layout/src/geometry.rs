@@ -1,6 +1,8 @@
 //! Rectangles in the two coordinate systems this crate speaks.
 //!
-//! Windows works in physical pixels with y growing down ([`PixelRect`]).
+//! The platforms place windows in whole screen units with y growing down
+//! ([`PixelRect`]): physical pixels on Windows, points measured from the top
+//! of the main display on the Mac (the Accessibility API's convention).
 //! Rectangle's calculations work in AppKit points with y growing up. Rather than
 //! re-derive every formula for a flipped axis, the calculations run on
 //! [`Frame`], a y-up rectangle made by negating y, so they port line for line:

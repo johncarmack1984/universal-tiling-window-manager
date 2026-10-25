@@ -4,7 +4,10 @@ members = [
     "apps/desktop",
     "crates/utwm-config",
     "crates/utwm-layout",
+    "crates/utwm-macos",
     "crates/utwm-windows",
+    "tools/bundle",
+    "tools/e2e",
 ]
 
 [workspace.package]
@@ -18,8 +21,9 @@ authors = ["John Carmack"]
 # Shared lint policy; members opt in with `[lints] workspace = true`. Production
 # code never unwraps: a window manager that panics takes every shortcut down with
 # it, so failures are logged and the action is skipped. `expect` stays legal: it
-# documents an invariant. utwm-windows is the one crate that talks to Win32, so
-# it carries its own copy of this table with `unsafe_code` relaxed to `deny`.
+# documents an invariant. utwm-windows and utwm-macos are the crates that talk to
+# the operating system, so each carries its own copy of this table with
+# `unsafe_code` allowed.
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
@@ -43,6 +47,7 @@ float_cmp_const = "warn"
 [workspace.dependencies]
 utwm-config = { path = "crates/utwm-config" }
 utwm-layout = { path = "crates/utwm-layout" }
+utwm-macos = { path = "crates/utwm-macos" }
 utwm-windows = { path = "crates/utwm-windows" }
 arc-swap = "1.7"
 insta = "1.43"

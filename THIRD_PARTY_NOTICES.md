@@ -2,7 +2,7 @@
 
 ## Rectangle
 
-The window calculations in `crates/utwm-layout` (which rect each action produces, how repeated presses cycle, gaps, display transfer, and placing windows that refuse their size) are ported from Rectangle's Swift source at [rxhanson/Rectangle@7c5c9c5](https://github.com/rxhanson/Rectangle/tree/7c5c9c56b447dad4e3720b805e54b1d115b1a90e) (v2.0.4). The action names and the settings export format in `crates/utwm-config` follow the same source. Rectangle is distributed under this license:
+The window calculations in `crates/utwm-layout` (which rect each action produces, how repeated presses cycle, gaps, display transfer, and placing windows that refuse their size) are ported from Rectangle's Swift source at [rxhanson/Rectangle@7c5c9c5](https://github.com/rxhanson/Rectangle/tree/7c5c9c56b447dad4e3720b805e54b1d115b1a90e) (v2.0.4). The action names and the settings export format in `crates/utwm-config` follow the same source, and so does the way `crates/utwm-macos` moves windows (size, then position, then size again, with the app's enhanced user interface switched off for the move, as in `AccessibilityElement.swift`) and registers shortcuts (Carbon hot keys, as Rectangle's MASShortcut does). Rectangle is distributed under this license:
 
 ```
 MIT License

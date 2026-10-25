@@ -1,25 +1,22 @@
-//! The tray app: Tauri 3 with no windows, the keyboard hook, and the worker
-//! that moves windows.
+//! The tray app: Tauri 3 with no windows, the platform's shortcut listener, and
+//! the worker that moves windows.
 
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use tauri::{Manager, RunEvent};
-use utwm_config::bindings::{self, Source};
-use utwm_config::load;
-use utwm_windows::events::Events;
-use utwm_windows::hook::{Hook, Mode};
+use utwm_config::{Chord, load};
 
 use crate::controller::{self, Command, Controller, Shared};
+use crate::platform::Shortcuts;
 use crate::{logging, poll, tray};
-
-/// Keeps the system-events thread alive for as long as the app runs.
-struct EventsGuard(#[allow(dead_code)] Events);
 
 pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     // Every coordinate this app reads or writes is a physical pixel. Tauri's
     // event loop asks for the same awareness; whichever call comes first wins.
+    #[cfg(windows)]
     utwm_windows::monitors::ensure_per_monitor_dpi_awareness();
     let log_file = logging::init();
     tracing::info!(version = env!("CARGO_PKG_VERSION"), log = ?log_file, "starting");
@@ -33,9 +30,7 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
         Ok(config) => (config, None),
         Err(error) => {
             tracing::warn!(%error, "configuration not loaded; using Rectangle's defaults");
-            let fallback =
-                bindings::resolve(&load::builtin_export(), &overrides, Source::builtin());
-            (fallback, Some(error.to_string()))
+            (load::builtin(&overrides), Some(error.to_string()))
         }
     };
     tracing::info!(
@@ -56,11 +51,16 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
 
     let app = tauri::Builder::default()
         .runtime(tauri_runtime_wry::Wry::default())
-        // A second launch exits here, before it installs a second keyboard hook.
+        // A second launch exits here, before it registers a second set of
+        // shortcuts.
         .plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
             tracing::info!(?argv, "already running; ignoring the second launch");
         }))
         .setup(move |app| {
+            // A menu bar app: no Dock icon and no menu bar of its own.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             let handle = app.handle().clone();
             let _ = shared.app.set(handle.clone());
 
@@ -69,20 +69,19 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
                 .iter()
                 .map(|binding| binding.chord)
                 .collect();
-            let hook = Hook::start(
-                Mode::Active,
-                chords,
-                controller::hook_reporter(commands.clone()),
-            )?;
-            let events = Events::start(controller::events_reporter(commands.clone()))?;
-            app.manage(EventsGuard(events));
+            let (shortcuts, refused) = listen(app, chords, &commands)?;
             let reload = commands.clone();
             poll::spawn(Arc::clone(&shared.watched), move || {
                 let _ = reload.send(Command::Reload);
             })?;
 
-            let controller =
-                Controller::new(Arc::clone(&shared), Arc::new(config), load_error, hook);
+            let controller = Controller::new(
+                Arc::clone(&shared),
+                Arc::new(config),
+                load_error,
+                shortcuts,
+                refused,
+            );
             tray::create(
                 &handle,
                 controller.config(),
@@ -97,14 +96,89 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
         })
         .build(tauri::generate_context!())?;
 
-    app.run(|_app, event| {
+    app.run(|_app, event| match event {
         // There are no windows to close; only Quit ends the app.
-        if let RunEvent::ExitRequested {
+        RunEvent::ExitRequested {
             code: None, api, ..
-        } = event
-        {
-            api.prevent_exit();
-        }
+        } => api.prevent_exit(),
+        #[cfg(target_os = "macos")]
+        RunEvent::Exit => utwm_macos::control::remove_socket(),
+        _ => {}
     });
     Ok(())
+}
+
+/// Keeps the system-events thread alive for as long as the app runs.
+#[cfg(windows)]
+struct EventsGuard(#[allow(dead_code)] utwm_windows::events::Events);
+
+/// Installs the keyboard hook and starts the thread that watches for system
+/// events and the command line's requests. The hook takes every chord.
+#[cfg(windows)]
+fn listen(
+    app: &mut tauri::App,
+    chords: Vec<Chord>,
+    commands: &Sender<Command>,
+) -> Result<(Shortcuts, Vec<Chord>), Box<dyn std::error::Error>> {
+    use utwm_windows::events::Events;
+    use utwm_windows::hook::{Hook, Mode};
+
+    let hook = Hook::start(
+        Mode::Active,
+        chords,
+        controller::hook_reporter(commands.clone()),
+    )?;
+    let events = Events::start(controller::events_reporter(commands.clone()))?;
+    app.manage(EventsGuard(events));
+    Ok((hook, Vec::new()))
+}
+
+/// Keeps the command line's socket open for as long as the app runs.
+#[cfg(target_os = "macos")]
+struct ControlGuard(#[allow(dead_code)] utwm_macos::control::Listener);
+
+/// Registers the hot keys and opens the command line's socket. Returns the
+/// chords macOS refused because another app holds them.
+///
+/// Moving windows needs Accessibility access, but nothing asks for it here: a
+/// prompt at every login until it is granted would be a nag. The menu says
+/// what is missing, and asking happens when the user clicks that line or
+/// first presses a shortcut.
+#[cfg(target_os = "macos")]
+fn listen(
+    app: &mut tauri::App,
+    chords: Vec<Chord>,
+    commands: &Sender<Command>,
+) -> Result<(Shortcuts, Vec<Chord>), Box<dyn std::error::Error>> {
+    use utwm_macos::{conflicts, control, permission, window};
+
+    window::limit_waits();
+    if !permission::is_granted() {
+        tracing::warn!("no Accessibility access yet; windows move once it is granted");
+    }
+    let (hotkeys, refused) =
+        Shortcuts::start(chords, controller::hotkeys_reporter(commands.clone()))?;
+    let listener = control::Listener::start(controller::control_reporter(commands.clone()))?;
+    app.manage(ControlGuard(listener));
+
+    // The menu's first line follows Accessibility access and any Rectangle
+    // still running; neither announces itself, so look every couple of seconds.
+    let status = commands.clone();
+    std::thread::Builder::new()
+        .name("status".to_owned())
+        .spawn(move || {
+            let observe = || (permission::is_granted(), conflicts::rectangle_running());
+            let mut last = observe();
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                let now = observe();
+                if now != last {
+                    last = now;
+                    if status.send(Command::StatusChanged).is_err() {
+                        break;
+                    }
+                }
+            }
+        })?;
+    Ok((hotkeys, refused))
 }

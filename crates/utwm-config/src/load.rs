@@ -8,12 +8,16 @@
 //!    the Mac's Rectangle Pro export;
 //! 4. `~/.config/rectangle/RectangleConfig.json`, for free Rectangle;
 //! 5. Rectangle's own recommended shortcuts, built in.
+//!
+//! The same paths serve both machines, and what is found resolves for the
+//! platform this build runs on.
 
 use std::path::{Path, PathBuf};
 
 use crate::bindings::{self, Resolved, Source};
 use crate::export::{Export, ExportError};
 use crate::overrides::{Overrides, OverridesError};
+use crate::platform::Platform;
 
 pub const APP_DIR: &str = "universal-tiling-window-manager";
 
@@ -98,8 +102,7 @@ pub fn load_with(
             .find(|path| path.is_file()),
     };
     let Some(path) = path else {
-        let export = builtin_export();
-        return Ok(bindings::resolve(&export, overrides, Source::builtin()));
+        return Ok(builtin(overrides));
     };
     let text = std::fs::read_to_string(&path).map_err(|source| LoadError::Io {
         path: path.clone(),
@@ -114,7 +117,23 @@ pub fn load_with(
         version: Some(export.version.clone()),
         path: Some(path),
     };
-    Ok(bindings::resolve(&export, overrides, source))
+    Ok(bindings::resolve(
+        &export,
+        overrides,
+        source,
+        Platform::current(),
+    ))
+}
+
+/// Rectangle's recommended shortcuts for this platform, for when there is no
+/// export or it can't be read.
+pub fn builtin(overrides: &Overrides) -> Resolved {
+    bindings::resolve(
+        &builtin_export(),
+        overrides,
+        Source::builtin(),
+        Platform::current(),
+    )
 }
 
 /// Rectangle's "Recommended" shortcuts (`alternateDefault` in
@@ -174,10 +193,16 @@ mod tests {
 
     #[test]
     fn the_builtin_set_binds_everything() {
-        let resolved =
-            bindings::resolve(&builtin_export(), &Overrides::default(), Source::builtin());
-        assert_eq!(resolved.bindings.len(), 22);
-        assert!(resolved.skipped.is_empty());
+        for platform in [Platform::Windows, Platform::Mac] {
+            let resolved = bindings::resolve(
+                &builtin_export(),
+                &Overrides::default(),
+                Source::builtin(),
+                platform,
+            );
+            assert_eq!(resolved.bindings.len(), 22, "{platform}");
+            assert!(resolved.skipped.is_empty(), "{platform}");
+        }
     }
 
     #[test]

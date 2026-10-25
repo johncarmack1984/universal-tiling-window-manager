@@ -1,6 +1,6 @@
 [package]
 name = "universal-tiling-window-manager"
-description = "Rectangle Pro's keyboard shortcuts on Windows, configured by the Mac's own export"
+description = "Rectangle Pro's keyboard shortcuts on Windows and the Mac, configured by Rectangle Pro's own export"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -30,6 +30,15 @@ tauri-plugin-single-instance = "=3.0.0-alpha.3"
 
 [target.'cfg(windows)'.dependencies]
 utwm-windows.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+utwm-macos.workspace = true
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+# The menu library Tauri builds on, at the version it pins, so the tests can
+# check that every menu accelerator this app writes parses the way Tauri will
+# parse it (Tauri drops one that doesn't, silently).
+muda = "=0.20.0"
 
 [features]
 # Release builds embed their configuration; `cargo install` builds this way.

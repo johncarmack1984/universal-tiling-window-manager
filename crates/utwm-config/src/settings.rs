@@ -242,8 +242,8 @@ pub struct Settings {
     pub repeated_maximize_restores_previous: bool,
     pub center_half_cycles: bool,
     pub move_fixed_size_to_edge: EdgeAlignment,
-    /// macOS bundle ids whose windows Rectangle leaves alone. Shown, never
-    /// applied: Windows apps have no bundle ids.
+    /// macOS bundle ids whose windows Rectangle leaves alone. The Mac honours
+    /// them; Windows apps have no bundle ids.
     pub disabled_apps: Vec<String>,
     /// Settings this app reads but cannot honour, with why.
     pub not_applied: Vec<(String, String)>,
@@ -379,13 +379,13 @@ impl Settings {
         if flag("halvesPreserveOtherAxisSize") {
             not_applied.push((
                 "halvesPreserveOtherAxisSize".to_owned(),
-                "not implemented on Windows; halves use the full other axis".to_owned(),
+                "not implemented; halves use the full other axis".to_owned(),
             ));
         }
         if flag("cooperativeCornerResize") {
             not_applied.push((
                 "cooperativeCornerResize".to_owned(),
-                "not implemented on Windows".to_owned(),
+                "not implemented".to_owned(),
             ));
         }
         if let Some(step) = float("smallerLargerOffsetV2") {
@@ -401,12 +401,6 @@ impl Settings {
             not_applied.push((
                 "repeatedMaximizeMode".to_owned(),
                 format!("Rectangle Pro mode {mode} is undocumented; repeated Maximize does nothing extra"),
-            ));
-        }
-        if !settings.disabled_apps.is_empty() {
-            not_applied.push((
-                "disabledApps".to_owned(),
-                "macOS bundle ids; list Windows apps under ignored_apps in config.toml".to_owned(),
             ));
         }
         settings.not_applied = not_applied;

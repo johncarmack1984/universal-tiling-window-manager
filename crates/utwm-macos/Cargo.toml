@@ -1,0 +1,84 @@
+[package]
+name = "utwm-macos"
+description = "The macOS side: global shortcuts, and finding, measuring and moving windows through the Accessibility API"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+utwm-config.workspace = true
+utwm-layout.workspace = true
+tracing.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+dispatch2 = { version = "0.3", default-features = false, features = ["std", "objc2"] }
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "libc",
+    "NSRunningApplication",
+    "NSScreen",
+    "NSWorkspace",
+] }
+objc2-application-services = { version = "0.3", default-features = false, features = [
+    "std",
+    "libc",
+    "AXError",
+    "AXUIElement",
+    "AXValue",
+    "HIServices",
+] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "CFArray",
+    "CFBase",
+    "CFCGTypes",
+    "CFDictionary",
+    "CFNumber",
+    "CFString",
+] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = [
+    "std",
+    "CGWindow",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSArray",
+    "NSBundle",
+    "NSEnumerator",
+    "NSError",
+    "NSGeometry",
+    "NSString",
+    "NSURL",
+] }
+objc2-service-management = { version = "0.3", default-features = false, features = [
+    "std",
+    "objc2",
+    "objc2-foundation",
+    "SMAppService",
+] }
+
+# The workspace forbids unsafe code; this crate is where the macOS calls live,
+# so like utwm-windows it carries its own copy of the lint table with unsafe
+# allowed and every unsafe block required to say why it is sound.
+[lints.rust]
+unsafe_code = "allow"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+panic_in_result_fn = "warn"
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+cast_possible_wrap = "warn"
+cast_lossless = "warn"
+float_cmp = "warn"
+float_cmp_const = "warn"
+undocumented_unsafe_blocks = "warn"

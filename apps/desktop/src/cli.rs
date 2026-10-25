@@ -6,11 +6,11 @@ use std::process::ExitCode;
 pub const USAGE: &str = "\
 usage: universal-tiling-window-manager [--config <export.json>] [command]
 
-With no command, runs in the tray.
+With no command, runs in the tray (the menu bar on the Mac).
 
 commands:
-  check [export.json]   show what each Mac shortcut becomes on Windows
-  probe [seconds]       log every key the keyboard delivers (default 60s)
+  check [export.json]   show what each shortcut becomes on this machine
+  probe [seconds]       log every key the keyboard delivers (default 60s; Windows)
   reload                make the running instance re-read its configuration
   pause                 pause or resume the running instance's shortcuts
   quit                  stop the running instance
@@ -18,7 +18,7 @@ commands:
 
 The export is looked for in ~/.config/rectangle-pro/RectangleProConfig.json,
 then ~/.config/rectangle/RectangleConfig.json; UTWM_CONFIG or --config names
-another. Windows-only overrides live in
+another. Per-machine overrides live in
 ~/.config/universal-tiling-window-manager/config.toml.";
 
 #[derive(Debug, PartialEq, Eq)]
@@ -107,13 +107,20 @@ pub fn run(invocation: Invocation) -> ExitCode {
         Command::Check => check(invocation.config),
         #[cfg(windows)]
         Command::Probe { seconds } => probe(invocation.config, seconds),
-        #[cfg(windows)]
-        Command::Reload => control(utwm_windows::events::Control::Reload),
-        #[cfg(windows)]
-        Command::Pause => control(utwm_windows::events::Control::TogglePause),
-        #[cfg(windows)]
-        Command::Quit => control(utwm_windows::events::Control::Quit),
-        #[cfg(windows)]
+        #[cfg(not(windows))]
+        Command::Probe { .. } => {
+            print_to_terminal(
+                "probe is for Windows, where shortcuts are translated; elsewhere each shortcut is the key Rectangle Pro stored, and `check` lists them.",
+            );
+            ExitCode::FAILURE
+        }
+        #[cfg(any(windows, target_os = "macos"))]
+        Command::Reload => control(crate::platform::Control::Reload),
+        #[cfg(any(windows, target_os = "macos"))]
+        Command::Pause => control(crate::platform::Control::TogglePause),
+        #[cfg(any(windows, target_os = "macos"))]
+        Command::Quit => control(crate::platform::Control::Quit),
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Run => match crate::app::run(invocation.config) {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
@@ -121,10 +128,10 @@ pub fn run(invocation: Invocation) -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "macos")))]
         _ => {
             print_to_terminal(
-                "universal-tiling-window-manager runs on Windows only; `check` works anywhere.",
+                "universal-tiling-window-manager runs on Windows and macOS; `check` works anywhere.",
             );
             ExitCode::FAILURE
         }
@@ -152,9 +159,9 @@ fn check(config: Option<PathBuf>) -> ExitCode {
     }
 }
 
-#[cfg(windows)]
-fn control(control: utwm_windows::events::Control) -> ExitCode {
-    if utwm_windows::events::send_control(control) {
+#[cfg(any(windows, target_os = "macos"))]
+fn control(control: crate::platform::Control) -> ExitCode {
+    if crate::platform::send_control(control) {
         ExitCode::SUCCESS
     } else {
         print_to_terminal("universal-tiling-window-manager is not running");

@@ -7,6 +7,9 @@
 //! The table mirrors the one RustDesk applies in its default Map mode
 //! (`rdev::macos_code_to_win_scancode`), which is what a Mac keyboard driving
 //! this machine over RustDesk actually delivers.
+//!
+//! No two macOS key codes share a position, so the table also runs backwards:
+//! the Mac registers a chord by the key code in that position.
 
 use std::fmt;
 
@@ -93,6 +96,15 @@ pub fn from_mac_key_code(key_code: i64) -> Option<PhysicalKey> {
         .iter()
         .find(|entry| i64::from(entry.0) == key_code)
         .map(|entry| entry.1)
+}
+
+/// The macOS key code in the same position as a Windows key, if a Mac
+/// keyboard has one there.
+pub fn to_mac_key_code(key: PhysicalKey) -> Option<u16> {
+    MAC_KEYS
+        .iter()
+        .find(|entry| entry.1 == key)
+        .map(|entry| entry.0)
 }
 
 /// How a macOS key code reads on the Mac: the glyph or label the key carries.
@@ -379,6 +391,8 @@ const ALIASES: &[(&str, &str)] = &[
     ("numpad8", "Num8"),
     ("numpad9", "Num9"),
     ("numpadenter", "NumEnter"),
+    // The Mac keypad's Clear key sits where NumLock is.
+    ("clear", "NumLock"),
 ];
 
 #[cfg(test)]
@@ -402,6 +416,19 @@ mod tests {
         codes.sort_unstable();
         codes.dedup();
         assert_eq!(codes.len(), MAC_KEYS.len());
+    }
+
+    #[test]
+    fn positions_map_back_to_the_mac_key_code() {
+        for (code, key, _) in MAC_KEYS {
+            assert_eq!(
+                to_mac_key_code(*key),
+                Some(*code),
+                "{} is claimed by more than one macOS key code",
+                key.windows_name()
+            );
+        }
+        assert_eq!(to_mac_key_code(e(0x5D)), None, "a Mac has no Menu key");
     }
 
     #[test]

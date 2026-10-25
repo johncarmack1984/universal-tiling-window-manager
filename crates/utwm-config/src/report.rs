@@ -1,7 +1,8 @@
-//! The text `check` prints: what each Mac shortcut becomes on Windows, what was
-//! left out and why, and the behaviour settings in effect.
+//! The text `check` prints: what each shortcut becomes on this platform, what
+//! was left out and why, and the behaviour settings in effect.
 
-use crate::bindings::{Resolved, Target};
+use crate::bindings::{Binding, Resolved, Target};
+use crate::platform::Platform;
 use crate::settings::{EdgeAlignment, RepeatMode, ScreenOrdering};
 
 pub fn render(resolved: &Resolved) -> String {
@@ -12,48 +13,68 @@ pub fn render(resolved: &Resolved) -> String {
     };
 
     line(format!("Source:    {}", resolved.source.describe()));
-    line(format!("Modifiers: {}", resolved.modifier_map));
+    if resolved.platform == Platform::Windows {
+        line(format!("Modifiers: {}", resolved.modifier_map));
+    }
     line(String::new());
 
-    let rows: Vec<[String; 3]> = resolved
-        .bindings
-        .iter()
-        .map(|binding| {
-            let mac = binding
-                .entries
+    line(format!("Bindings ({} chords):", resolved.bindings.len()));
+    match resolved.platform {
+        Platform::Windows => {
+            let rows: Vec<[String; 3]> = resolved
+                .bindings
                 .iter()
-                .find_map(|entry| entry.mac)
-                .map_or_else(|| "(Windows only)".to_owned(), |mac| mac.to_string());
-            let names: Vec<String> = binding
-                .entries
-                .iter()
-                .map(|entry| match entry.target {
-                    Target::Action(_) => entry.name.clone(),
-                    Target::Spec(_) => format!("custom position \"{}\"", entry.name),
+                .map(|binding| {
+                    let mac = binding
+                        .entries
+                        .iter()
+                        .find_map(|entry| entry.mac)
+                        .map_or_else(|| "(Windows only)".to_owned(), |mac| mac.to_string());
+                    [mac, binding.chord.to_string(), action(binding)]
                 })
                 .collect();
-            let action = if binding.is_cycle() {
-                format!("{} (cycles on repeat)", names.join(" → "))
-            } else {
-                names.join("")
-            };
-            [mac, binding.chord.to_string(), action]
-        })
-        .collect();
-    line(format!("Bindings ({} chords):", rows.len()));
-    let widths = column_widths(&rows);
-    for [mac, chord, action] in &rows {
-        line(format!(
-            "  {}  {}  {action}",
-            pad(mac, widths[0]),
-            pad(chord, widths[1])
-        ));
+            let widths = column_widths(&rows);
+            for [mac, chord, action] in &rows {
+                line(format!(
+                    "  {}  {}  {action}",
+                    pad(mac, widths[0]),
+                    pad(chord, widths[1])
+                ));
+            }
+        }
+        Platform::Mac => {
+            let rows: Vec<[String; 2]> = resolved
+                .bindings
+                .iter()
+                .map(|binding| {
+                    let chord = binding.chord.to_mac();
+                    let from_export = binding.entries.iter().any(|entry| entry.mac == chord);
+                    let chord =
+                        chord.map_or_else(|| binding.chord.to_string(), |mac| mac.to_string());
+                    let action = action(binding);
+                    if from_export {
+                        [chord, action]
+                    } else {
+                        [chord, format!("{action} (config.toml)")]
+                    }
+                })
+                .collect();
+            let width = rows
+                .iter()
+                .map(|row| row[0].chars().count())
+                .max()
+                .unwrap_or(0);
+            for [chord, action] in &rows {
+                line(format!("  {}  {action}", pad(chord, width)));
+            }
+        }
     }
 
     if !resolved.skipped.is_empty() {
         line(String::new());
         line(format!(
-            "Not bound on Windows ({}):",
+            "Not bound on {} ({}):",
+            resolved.platform,
             resolved.skipped.len()
         ));
         let rows: Vec<[String; 3]> = resolved
@@ -165,6 +186,23 @@ pub fn render(resolved: &Resolved) -> String {
         }
     }
     out
+}
+
+/// What a binding runs: its action, or the actions it cycles through.
+fn action(binding: &Binding) -> String {
+    let names: Vec<String> = binding
+        .entries
+        .iter()
+        .map(|entry| match entry.target {
+            Target::Action(_) => entry.name.clone(),
+            Target::Spec(_) => format!("custom position \"{}\"", entry.name),
+        })
+        .collect();
+    if binding.is_cycle() {
+        format!("{} (cycles on repeat)", names.join(" → "))
+    } else {
+        names.join("")
+    }
 }
 
 fn column_widths(rows: &[[String; 3]]) -> [usize; 2] {
