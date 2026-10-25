@@ -42,9 +42,20 @@ e2e:
     cargo run -q -p utwm-e2e
 
 # Install the release build into ~/.cargo/bin, stopping a running copy first.
+[windows]
 install:
     -universal-tiling-window-manager quit
     cargo install --locked --force --path apps/desktop
+
+# Build the app bundle into target/release/bundle/macos.
+[macos]
+bundle:
+    cargo run -q --locked -p utwm-bundle
+
+# Install the app into /Applications and start it, quitting a running copy first.
+[macos]
+install:
+    cargo run -q --locked -p utwm-bundle -- --install
 
 # Supply-chain checks.
 deny:

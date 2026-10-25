@@ -1,12 +1,27 @@
-//! Start at login, per user: a LaunchAgent in `~/Library/LaunchAgents` that
-//! runs this executable when the user logs in. System Settings → General →
-//! Login Items lists it under "Allow in the Background", where it can be
-//! switched off too. Only the menu turns this on; nothing installs it behind
-//! the user's back.
+//! Start at login, per user. Run from its app bundle, the app registers itself
+//! as a login item (`SMAppService`), which System Settings → General → Login
+//! Items lists by name under Open at Login. Run without a bundle, from `cargo
+//! run` say, it falls back to a LaunchAgent in `~/Library/LaunchAgents`, listed
+//! under Allow in the Background. Only the menu turns either on; nothing
+//! installs them behind the user's back.
 
 use std::path::{Path, PathBuf};
 
+use objc2::rc::Retained;
+use objc2_foundation::NSBundle;
+use objc2_service_management::{SMAppService, SMAppServiceStatus};
+
+/// The bundle identifier, which also labels the LaunchAgent.
 pub const LABEL: &str = "com.johncarmack.universal-tiling-window-manager";
+
+/// This app's own login item, when it runs from its bundle.
+fn login_item() -> Option<Retained<SMAppService>> {
+    let bundled = NSBundle::mainBundle()
+        .bundleIdentifier()
+        .is_some_and(|id| id.to_string() == LABEL);
+    // SAFETY: asks for the main app's service object; no arguments.
+    bundled.then(|| unsafe { SMAppService::mainAppService() })
+}
 
 fn plist_path() -> Option<PathBuf> {
     std::env::home_dir().map(|home| {
@@ -18,12 +33,45 @@ fn plist_path() -> Option<PathBuf> {
 
 /// Whether the app starts at login.
 pub fn is_enabled() -> bool {
-    plist_path().is_some_and(|path| path.is_file())
+    match login_item() {
+        Some(item) => {
+            // SAFETY: reads the service's status; no arguments.
+            let status = unsafe { item.status() };
+            status == SMAppServiceStatus::Enabled
+        }
+        None => plist_path().is_some_and(|path| path.is_file()),
+    }
 }
 
 /// Turns start at login on for `exe`, or off. Takes effect at the next login;
 /// the running copy carries on either way.
 pub fn set_enabled(enabled: bool, exe: &Path) -> std::io::Result<()> {
+    if let Some(item) = login_item() {
+        // An agent left from running unbundled would start a second copy.
+        set_launch_agent(false, exe)?;
+        // SAFETY: plain calls on the main app's service object.
+        let result = unsafe {
+            if enabled {
+                item.registerAndReturnError()
+            } else {
+                item.unregisterAndReturnError()
+            }
+        };
+        return result.map_err(|error| {
+            // Switched off in System Settings, it can only be switched back on there.
+            // SAFETY: reads the status and opens System Settings; no arguments.
+            unsafe {
+                if enabled && item.status() == SMAppServiceStatus::RequiresApproval {
+                    SMAppService::openSystemSettingsLoginItems();
+                }
+            }
+            std::io::Error::other(error.localizedDescription().to_string())
+        });
+    }
+    set_launch_agent(enabled, exe)
+}
+
+fn set_launch_agent(enabled: bool, exe: &Path) -> std::io::Result<()> {
     let path = plist_path().ok_or_else(|| std::io::Error::other("no home directory"))?;
     if enabled {
         if let Some(folder) = path.parent() {

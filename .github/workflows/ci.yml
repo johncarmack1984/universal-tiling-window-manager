@@ -79,6 +79,10 @@ jobs:
             echo "check did not report Rectangle's 22 default shortcuts"
             exit 1
           }
+      - name: app bundle (what just install builds)
+        run: |
+          cargo run --locked -p utwm-bundle
+          plutil -lint target/release/bundle/macos/universal-tiling-window-manager.app/Contents/Info.plist
 
   deny:
     runs-on: ubuntu-latest

@@ -1,5 +1,6 @@
 # One line ending everywhere, so a checkout on Windows and one on the Mac
 # produce identical files and rustfmt never fights core.autocrlf.
 * text=auto eol=lf
+*.icns binary
 *.ico binary
 *.png binary

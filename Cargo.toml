@@ -6,6 +6,7 @@ members = [
     "crates/utwm-layout",
     "crates/utwm-macos",
     "crates/utwm-windows",
+    "tools/bundle",
     "tools/e2e",
 ]
 

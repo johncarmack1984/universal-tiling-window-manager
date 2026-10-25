@@ -57,6 +57,11 @@ fn socket_path() -> Option<PathBuf> {
         })
 }
 
+/// Whether an instance is running and listening.
+pub fn is_running() -> bool {
+    socket_path().is_some_and(|path| UnixStream::connect(path).is_ok())
+}
+
 /// Sends `control` to the running instance. Returns false if none is running.
 pub fn send_control(control: Control) -> bool {
     let Some(mut stream) = socket_path().and_then(|path| UnixStream::connect(path).ok()) else {

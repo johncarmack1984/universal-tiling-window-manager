@@ -17,18 +17,23 @@ universal-tiling-window-manager
 
 The second line starts it in the tray. To have it start with Windows, tick **Start at login** in its tray menu, which adds it to your user's startup apps (Task Manager lists it there too). Building needs Rust 1.95 or newer and the MSVC build tools. It is developed and tested on Windows 11 x64.
 
-On the Mac:
+To update, stop the running copy first, since Windows won't replace a running executable: `universal-tiling-window-manager quit`, then the `cargo install` line again with `--force`.
+
+On the Mac it is an app, built from a clone with [just](https://just.systems):
 
 ```sh
-cargo install --locked --git https://github.com/johncarmack1984/universal-tiling-window-manager universal-tiling-window-manager
-universal-tiling-window-manager
+git clone https://github.com/johncarmack1984/universal-tiling-window-manager
+cd universal-tiling-window-manager
+just install
 ```
 
-The second line starts it in the menu bar. Building needs Rust 1.95 or newer and the Xcode command line tools.
+`just install` builds the app, puts it in /Applications and starts it in the menu bar; from then on it opens from Finder or Spotlight like any other app. Building needs Rust 1.95 or newer and the Xcode command line tools.
 
-Moving other apps' windows takes Accessibility access. Until the app has it, the first line of its menu says so; clicking that line, or pressing any shortcut, brings up macOS's prompt and opens System Settings → Privacy & Security → Accessibility with the app in the list, ready to switch on. macOS grants the access to whatever started the app, which is your terminal if you ran it from one. To grant it to the app alone, tick **Start at login** in its menu, quit it, and start it the way login will: log out and back in, or run `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.johncarmack.universal-tiling-window-manager.plist`. System Settings → General → Login Items lists it under Allow in the Background.
+Moving other apps' windows takes Accessibility access. Until the app has it, the first line of its menu says so; clicking that line, or pressing any shortcut, brings up macOS's prompt and opens System Settings → Privacy & Security → Accessibility with the app in the list, ready to switch on. Tick **Start at login** in its menu to have it start with the Mac; System Settings → General → Login Items lists it under Open at Login.
 
-To update, stop the running copy first, since Windows won't replace a running executable: `universal-tiling-window-manager quit`, then the `cargo install` line again with `--force`. macOS takes the rebuilt executable for a new app, so its Accessibility switch stops counting: remove it from the list and let the app ask again. Signing each build with a code-signing certificate from your keychain (a self-signed one made in Keychain Access will do) keeps the access across updates: `codesign -fs "<certificate name>" "$(command -v universal-tiling-window-manager)"`.
+To update, `git pull` and `just install` again; it quits the running copy itself. macOS ties Accessibility access to the app's signature, and the build is signed ad hoc unless you name a certificate, so after each update the app asks for access again (the installer clears the stale grant first, so the switch in System Settings never shows on while doing nothing). Signing with a code-signing certificate from your keychain keeps the access across updates; a self-signed one made in Keychain Access → Certificate Assistant → Create a Certificate, with Code Signing as its type, will do: `UTWM_SIGN_IDENTITY="<certificate name>" just install`.
+
+The command line is inside the app: `/Applications/universal-tiling-window-manager.app/Contents/MacOS/universal-tiling-window-manager check`. A symlink on your PATH shortens that to `universal-tiling-window-manager check`, as on Windows. Start the app itself from Finder, Spotlight or `open -a universal-tiling-window-manager` rather than from a terminal, or macOS counts it as part of the terminal and asks for the terminal's Accessibility access instead of its own.
 
 ## Switching from Rectangle Pro on the Mac
 
@@ -167,6 +172,7 @@ The log is at `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on Window
 | `crates/utwm-windows` | Win32: the low-level keyboard hook, finding and placing windows, displays, start at login |
 | `crates/utwm-macos` | macOS: Carbon hot keys, finding and placing windows through the Accessibility API, displays, start at login (a LaunchAgent) |
 | `apps/desktop` | The Tauri 3 tray app and the command line, one codebase for both platforms |
+| `tools/bundle` | `utwm-bundle`, which builds the Mac app bundle (`just bundle`) and installs it into /Applications (`just install`) |
 | `tools/e2e` | The end-to-end checks (`utwm-e2e`, one per platform), and `utwm-inject`, which presses keys by scan code on Windows the way RustDesk does |
 
 `just check` runs formatting, clippy and the tests. `just run` starts the app from source with debug logging, and `just e2e` then runs the end-to-end check for that platform, which opens a window of its own and moves only that.
