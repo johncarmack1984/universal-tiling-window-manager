@@ -9,17 +9,29 @@ name: ci
 # The end-to-end checks (tools/e2e) need a running app, a real desktop and, on
 # the Mac, Accessibility access, so they run by hand: `just run`, then
 # `just e2e`. Both jobs still build and lint them with the workspace.
+#
+# release.yml calls this as its gate, checking out the release tag, so nothing
+# ships unless the tag passes what a pull request must.
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_call:
+    inputs:
+      ref:
+        description: "The release tag to check"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+# Under workflow_call, github.workflow is the caller's name, which keeps the
+# release gate out of the group main's own run is in (and out of release.yml's
+# group, which it would wait on forever).
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -31,6 +43,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
       - run: cargo fmt --all --check
 
   core:
@@ -38,6 +52,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo clippy --locked -p utwm-config -p utwm-layout -- -D warnings
       - run: cargo test --locked -p utwm-config -p utwm-layout
@@ -47,6 +63,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo clippy --locked --workspace -- -D warnings
       - run: cargo test --locked --workspace
@@ -66,6 +84,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo clippy --locked --workspace -- -D warnings
       - run: cargo test --locked --workspace
@@ -89,4 +109,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1

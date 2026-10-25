@@ -1,0 +1,47 @@
+name: opentofu
+
+# fmt and validate infra/ (the release workflow's signing role) on every PR
+# and push to main that touches it. No AWS credentials: the root is applied by
+# hand (`tofu -chdir=infra apply`), so CI initializes without a backend and
+# validates.
+
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+      - '.github/workflows/opentofu.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/opentofu.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: opentofu-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: 1.12.5
+
+      - name: fmt
+        run: tofu fmt -check -recursive
+
+      - name: init (no backend)
+        run: tofu init -backend=false -input=false
+
+      - name: validate
+        run: tofu validate -no-color
