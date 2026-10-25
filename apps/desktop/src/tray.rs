@@ -34,6 +34,13 @@ impl Status {
     }
 }
 
+/// The updates line, on a copy that updates itself.
+pub struct UpdatesLine {
+    pub text: String,
+    /// Whether clicking it checks now; off while a check or an install runs.
+    pub enabled: bool,
+}
+
 /// One line saying where the shortcuts came from and how many bound.
 pub fn status_line(config: &Resolved, error: Option<&str>, refused: usize) -> String {
     if let Some(error) = error {
@@ -87,9 +94,10 @@ pub fn create(
     config: &Resolved,
     status: &Status,
     paused: bool,
+    updates: Option<&UpdatesLine>,
     commands: Sender<Command>,
 ) -> tauri::Result<()> {
-    let menu = build_menu(app, config, status, paused)?;
+    let menu = build_menu(app, config, status, paused, updates)?;
     // The Mac's menu bar wants a black template image, which it tints to
     // match the bar; the Windows tray shows the icon in colour.
     #[cfg(target_os = "macos")]
@@ -116,11 +124,12 @@ pub fn refresh(
     config: &Resolved,
     status: &Status,
     paused: bool,
+    updates: Option<&UpdatesLine>,
 ) -> tauri::Result<()> {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return Ok(());
     };
-    tray.set_menu(Some(build_menu(app, config, status, paused)?))?;
+    tray.set_menu(Some(build_menu(app, config, status, paused, updates)?))?;
     tray.set_tooltip(Some(tooltip(app, config, paused)))?;
     Ok(())
 }
@@ -150,6 +159,8 @@ fn command_for(id: &str) -> Option<Command> {
         "autostart" => Some(Command::ToggleAutostart),
         #[cfg(target_os = "macos")]
         "access" => Some(Command::OpenAccessSettings),
+        #[cfg(target_os = "macos")]
+        "update" => Some(Command::CheckForUpdates),
         "quit" => Some(Command::Quit),
         _ => None,
     }
@@ -244,6 +255,7 @@ fn build_menu(
     config: &Resolved,
     status: &Status,
     paused: bool,
+    updates: Option<&UpdatesLine>,
 ) -> tauri::Result<Menu<R>> {
     let menu = Menu::new(app)?;
     let status_id = if status.opens_access_settings {
@@ -324,15 +336,18 @@ fn build_menu(
     )?;
     let separator_2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let items: [&dyn IsMenuItem<R>; 7] = [
-        &separator,
-        &pause,
-        &reload,
-        &open,
-        &autostart,
-        &separator_2,
-        &quit,
-    ];
+    let items: [&dyn IsMenuItem<R>; 5] = [&separator, &pause, &reload, &open, &autostart];
+    menu.append_items(&items)?;
+    if let Some(updates) = updates {
+        menu.append(&MenuItem::with_id(
+            app,
+            "update",
+            &updates.text,
+            updates.enabled,
+            None::<&str>,
+        )?)?;
+    }
+    let items: [&dyn IsMenuItem<R>; 2] = [&separator_2, &quit];
     menu.append_items(&items)?;
     Ok(menu)
 }

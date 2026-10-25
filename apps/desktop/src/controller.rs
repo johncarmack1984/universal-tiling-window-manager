@@ -18,6 +18,8 @@ use utwm_windows::events::SystemEvent;
 
 use crate::platform::{self, Control, Shortcuts, Window, monitors, window};
 use crate::tray;
+#[cfg(target_os = "macos")]
+use crate::updates;
 
 pub enum Command {
     /// The listener matched binding `index` of the current configuration.
@@ -38,6 +40,12 @@ pub enum Command {
     StatusChanged,
     #[cfg(target_os = "macos")]
     OpenAccessSettings,
+    /// The menu asked for an update check.
+    #[cfg(target_os = "macos")]
+    CheckForUpdates,
+    /// What the update thread is doing, for the menu.
+    #[cfg(target_os = "macos")]
+    Updates(updates::State),
     Quit,
 }
 
@@ -65,6 +73,11 @@ pub struct Controller {
     /// shortcut pressed without it asks once rather than on every press.
     #[cfg(target_os = "macos")]
     asked_for_access: bool,
+    /// The update thread, when this copy runs from an app bundle.
+    #[cfg(target_os = "macos")]
+    updates: Option<updates::Updates>,
+    #[cfg(target_os = "macos")]
+    update_state: updates::State,
     /// The last application window in the foreground, for tray menu actions:
     /// by the time a menu item is clicked on Windows the tray itself has the
     /// focus. The Mac's menu bar never takes it, so the Mac keeps none and
@@ -89,6 +102,10 @@ impl Controller {
             engine: Engine::new(),
             #[cfg(target_os = "macos")]
             asked_for_access: false,
+            #[cfg(target_os = "macos")]
+            updates: None,
+            #[cfg(target_os = "macos")]
+            update_state: updates::State::Idle,
             last_target: if cfg!(windows) {
                 window::foreground()
             } else {
@@ -123,6 +140,22 @@ impl Controller {
         &self.config
     }
 
+    #[cfg(target_os = "macos")]
+    pub fn with_updates(mut self, updates: Option<updates::Updates>) -> Self {
+        self.updates = updates;
+        self
+    }
+
+    /// The menu's updates line, on a copy that updates itself.
+    pub fn updates_line(&self) -> Option<tray::UpdatesLine> {
+        #[cfg(target_os = "macos")]
+        if self.updates.is_some() {
+            let (text, enabled) = self.update_state.menu_line();
+            return Some(tray::UpdatesLine { text, enabled });
+        }
+        None
+    }
+
     pub fn run(mut self, commands: Receiver<Command>) {
         while let Ok(command) = commands.recv() {
             match command {
@@ -153,6 +186,13 @@ impl Controller {
                 }
                 #[cfg(target_os = "macos")]
                 Command::OpenAccessSettings => self.ask_for_access(),
+                #[cfg(target_os = "macos")]
+                Command::CheckForUpdates => self.check_for_updates(),
+                #[cfg(target_os = "macos")]
+                Command::Updates(state) => {
+                    self.update_state = state;
+                    self.refresh_tray();
+                }
                 Command::Quit => {
                     self.quit();
                     break;
@@ -190,6 +230,18 @@ impl Controller {
             Control::Quit => self.quit(),
             Control::Reload => self.reload(),
             Control::TogglePause => self.toggle_pause(),
+            #[cfg(target_os = "macos")]
+            Control::Update => self.check_for_updates(),
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn check_for_updates(&self) {
+        match &self.updates {
+            Some(updates) => updates.check_now(),
+            None => {
+                tracing::info!("this copy doesn't run from an app bundle, so it doesn't update")
+            }
         }
     }
 
@@ -485,7 +537,10 @@ impl Controller {
     fn refresh_tray(&self) {
         if let Some(app) = self.shared.app.get() {
             let paused = self.shared.paused.load(Ordering::SeqCst);
-            if let Err(error) = tray::refresh(app, &self.config, &self.status(), paused) {
+            let updates = self.updates_line();
+            if let Err(error) =
+                tray::refresh(app, &self.config, &self.status(), paused, updates.as_ref())
+            {
                 tracing::warn!(%error, "could not update the tray menu");
             }
         }

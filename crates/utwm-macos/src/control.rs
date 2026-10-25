@@ -1,6 +1,7 @@
-//! How the command line reaches the running app: `quit`, `reload` and `pause`
-//! connect to a Unix socket and send one word. The Windows build finds its
-//! hidden window by class name instead; this is the Mac's equivalent.
+//! How the command line reaches the running app: `quit`, `reload`, `pause`
+//! and `update` connect to a Unix socket and send one word. The Windows build
+//! finds its hidden window by class name instead; this is the Mac's
+//! equivalent.
 
 use std::io::{Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -13,6 +14,8 @@ pub enum Control {
     Quit,
     Reload,
     TogglePause,
+    /// Check for an update now, and install it.
+    Update,
 }
 
 impl Control {
@@ -21,11 +24,12 @@ impl Control {
             Self::Quit => "quit",
             Self::Reload => "reload",
             Self::TogglePause => "pause",
+            Self::Update => "update",
         }
     }
 
     fn from_word(word: &str) -> Option<Self> {
-        [Self::Quit, Self::Reload, Self::TogglePause]
+        [Self::Quit, Self::Reload, Self::TogglePause, Self::Update]
             .into_iter()
             .find(|control| control.word() == word)
     }
@@ -124,7 +128,12 @@ mod tests {
 
     #[test]
     fn words_round_trip() {
-        for control in [Control::Quit, Control::Reload, Control::TogglePause] {
+        for control in [
+            Control::Quit,
+            Control::Reload,
+            Control::TogglePause,
+            Control::Update,
+        ] {
             assert_eq!(Control::from_word(control.word()), Some(control));
         }
         assert_eq!(Control::from_word("frobnicate"), None);

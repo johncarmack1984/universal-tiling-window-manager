@@ -20,6 +20,8 @@ tauri-build = { version = "=3.0.0-alpha.4", features = [] }
 [dependencies]
 utwm-config.workspace = true
 utwm-layout.workspace = true
+# tauri::generate_context! writes the plugins' configuration out as JSON.
+serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi"] }
 # Tauri 3 is in alpha; every Tauri crate is pinned to an exact release so an
@@ -33,6 +35,9 @@ utwm-windows.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 utwm-macos.workspace = true
+# Installs releases (src/updates.rs). native-tls is the Mac's own TLS, so no
+# TLS library of the plugin's choosing comes along.
+tauri-plugin-updater = { version = "=3.0.0-alpha.3", default-features = false, features = ["native-tls"] }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 # The menu library Tauri builds on, at the version it pins, so the tests can
