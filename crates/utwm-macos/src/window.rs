@@ -188,7 +188,7 @@ impl std::fmt::Display for PlaceError {
         match self {
             Self::Hung => f.write_str("the app is not responding"),
             Self::Denied => f.write_str(
-                "macOS refused; give universal-tiling-window-manager Accessibility access in System Settings",
+                "macOS refused; this app's Accessibility access is off in System Settings",
             ),
             Self::Failed(code) => write!(f, "the Accessibility API failed with error {code}"),
             Self::Gone => f.write_str("the window no longer exists"),

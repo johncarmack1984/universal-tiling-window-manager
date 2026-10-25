@@ -16,7 +16,6 @@ use crate::platform;
 type R = tauri::DynRuntime;
 
 const TRAY_ID: &str = "universal-tiling-window-manager";
-const APP_NAME: &str = "universal-tiling-window-manager";
 
 /// The menu's first line.
 pub struct Status {
@@ -73,11 +72,13 @@ pub fn chord_label(chord: Chord) -> String {
     chord.to_string()
 }
 
-fn tooltip(config: &Resolved, paused: bool) -> String {
+/// The app's name (`productName`) and what it is doing.
+fn tooltip(app: &tauri::AppHandle, config: &Resolved, paused: bool) -> String {
+    let name = &app.package_info().name;
     if paused {
-        format!("{APP_NAME}: paused")
+        format!("{name}: paused")
     } else {
-        format!("{APP_NAME}: {} shortcuts", config.bindings.len())
+        format!("{name}: {} shortcuts", config.bindings.len())
     }
 }
 
@@ -98,7 +99,7 @@ pub fn create(
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .icon_as_template(cfg!(target_os = "macos"))
-        .tooltip(tooltip(config, paused))
+        .tooltip(tooltip(app, config, paused))
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(move |_app, event| {
@@ -120,7 +121,7 @@ pub fn refresh(
         return Ok(());
     };
     tray.set_menu(Some(build_menu(app, config, status, paused)?))?;
-    tray.set_tooltip(Some(tooltip(config, paused)))?;
+    tray.set_tooltip(Some(tooltip(app, config, paused)))?;
     Ok(())
 }
 

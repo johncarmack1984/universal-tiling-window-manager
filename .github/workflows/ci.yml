@@ -82,7 +82,7 @@ jobs:
       - name: app bundle (what just install builds)
         run: |
           cargo run --locked -p utwm-bundle
-          plutil -lint target/release/bundle/macos/universal-tiling-window-manager.app/Contents/Info.plist
+          plutil -lint "target/release/bundle/macos/Window Manager.app/Contents/Info.plist"
 
   deny:
     runs-on: ubuntu-latest

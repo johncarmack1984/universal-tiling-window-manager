@@ -219,7 +219,7 @@ mod tests {
 
     fn names() -> Names {
         Names {
-            product_name: "universal-tiling-window-manager".to_owned(),
+            product_name: "Window Manager".to_owned(),
             identifier: "com.johncarmack.universal-tiling-window-manager".to_owned(),
         }
     }
@@ -233,6 +233,7 @@ mod tests {
         assert!(plist.contains(
             "<key>CFBundleExecutable</key>\n\t<string>universal-tiling-window-manager</string>"
         ));
+        assert!(plist.contains("<key>CFBundleName</key>\n\t<string>Window Manager</string>"));
         assert!(plist.contains("<key>LSUIElement</key>\n\t<true/>"));
         assert!(plist.contains(&format!(
             "<key>CFBundleShortVersionString</key>\n\t<string>{}</string>",

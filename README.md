@@ -19,7 +19,7 @@ The second line starts it in the tray. To have it start with Windows, tick **Sta
 
 To update, stop the running copy first, since Windows won't replace a running executable: `universal-tiling-window-manager quit`, then the `cargo install` line again with `--force`.
 
-On the Mac it is an app, built from a clone with [just](https://just.systems):
+On the Mac it is an app, Window Manager, built from a clone with [just](https://just.systems):
 
 ```sh
 git clone https://github.com/johncarmack1984/universal-tiling-window-manager
@@ -33,7 +33,7 @@ Moving other apps' windows takes Accessibility access. Until the app has it, the
 
 To update, `git pull` and `just install` again; it quits the running copy itself. macOS ties Accessibility access to the app's signature, and the build is signed ad hoc unless you name a certificate, so after each update the app asks for access again (the installer clears the stale grant first, so the switch in System Settings never shows on while doing nothing). Signing with a code-signing certificate from your keychain keeps the access across updates; a self-signed one made in Keychain Access → Certificate Assistant → Create a Certificate, with Code Signing as its type, will do: `UTWM_SIGN_IDENTITY="<certificate name>" just install`.
 
-The command line is inside the app: `/Applications/universal-tiling-window-manager.app/Contents/MacOS/universal-tiling-window-manager check`. A symlink on your PATH shortens that to `universal-tiling-window-manager check`, as on Windows. Start the app itself from Finder, Spotlight or `open -a universal-tiling-window-manager` rather than from a terminal, or macOS counts it as part of the terminal and asks for the terminal's Accessibility access instead of its own.
+The command line is inside the app: `"/Applications/Window Manager.app/Contents/MacOS/universal-tiling-window-manager" check`. A symlink on your PATH shortens that to `universal-tiling-window-manager check`, as on Windows. Start the app itself from Finder, Spotlight or `open -a "Window Manager"` rather than from a terminal, or macOS counts it as part of the terminal and asks for the terminal's Accessibility access instead of its own.
 
 ## Switching from Rectangle Pro on the Mac
 
