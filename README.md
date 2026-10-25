@@ -1,10 +1,10 @@
 # universal-tiling-window-manager
 
-Rectangle Pro's keyboard shortcuts on Windows and the Mac, configured by the export Rectangle Pro writes.
+A tiling window manager you drive from the keyboard, on Windows and the Mac. A shortcut puts the window in a half, a third, a corner, or on another display.
 
-The export is the configuration on both machines. Put it in your dotfiles and the same keys throw windows to the same places everywhere: on the Mac, exactly the shortcuts Rectangle Pro bound; on Windows, the keys in the same positions, so ⌃⌥← is Ctrl+Alt+Left. Pressed again, a half moves on to the display in that direction, as Rectangle Pro does: a second ⌃⌥← puts the window in the right half of the display to the left, a third in that display's left half, and at the outermost display a repeat leaves it where it is; →, ↑ and ↓ work the same way. Window positions are computed by a port of Rectangle's own calculations, so a left third is the same third, down to the pixel rounding.
+One configuration serves both machines, with the same keys in the same places: ⌃⌥← on the Mac is Ctrl+Alt+Left on Windows. It starts with Rectangle's recommended shortcuts, and `config.toml` changes any of them, on one machine or both. Already on Rectangle Pro? Point it at Rectangle Pro's settings export and it picks up your shortcuts and settings, so it can take Rectangle Pro's place on the Mac and bring the same keys to Windows.
 
-On the Mac it runs in Rectangle Pro's place. It lives in the tray on Windows and in the menu bar on the Mac, and it has no settings window: the export is the settings, `config.toml` holds whatever differs between the machines, and Rectangle Pro, if you keep it installed, can still edit the shortcuts and export them again.
+It lives in the tray on Windows and in the menu bar on the Mac, has no settings window, and updates itself from signed releases. Window positions come from a port of Rectangle's own calculations, so a third is the same third on both machines, down to the pixel rounding.
 
 ## Install
 
@@ -39,22 +39,17 @@ just install
 
 The command line is inside the app: `"/Applications/Window Manager.app/Contents/MacOS/universal-tiling-window-manager" check`. A symlink on your PATH shortens that to `universal-tiling-window-manager check`, as on Windows. Start the app itself from Finder, Spotlight or `open -a "Window Manager"` rather than from a terminal, or macOS counts it as part of the terminal and asks for the terminal's Accessibility access instead of its own.
 
-## Switching from Rectangle Pro on the Mac
+## Configuration
 
-1. Rectangle Pro → Settings → General → Export, and put the file at `~/.config/rectangle-pro/RectangleProConfig.json`.
-2. Check what it binds: `universal-tiling-window-manager check`. On the Mac every shortcut binds as it is, keypad Clear included.
-3. Quit Rectangle Pro and turn off its launch at login. While both run they answer the same shortcuts, and this app's menu says so until Rectangle Pro quits.
-4. Start this app, give it Accessibility access, and tick **Start at login**.
+With nothing configured it binds Rectangle's recommended shortcuts, the set Rectangle and Rectangle Pro ship with too. To change one, set it in [`config.toml`](#per-machine-overrides), which keeps the Windows and Mac settings apart, so one file serves both.
 
-Everything the export binds and this app supports carries over: the shortcuts and their cycles, the repeat behaviour, gaps, custom positions, and the apps Rectangle ignores (`disabledApps`, by bundle id). Drag-to-snap doesn't; macOS's own window tiling covers dragging (System Settings → Desktop & Dock). To change a shortcut later, export again from Rectangle Pro, which can stay installed as the editor without launching at login, or set it under `[mac.shortcuts]` in `config.toml`.
-
-## The export
+To bring a setup over from Rectangle Pro or free Rectangle, use its settings export:
 
 1. On the Mac: Rectangle Pro → Settings → General → Export. Free Rectangle's export works too.
 2. On each machine, put the file at `~/.config/rectangle-pro/RectangleProConfig.json` (free Rectangle's goes in `~/.config/rectangle/RectangleConfig.json`). A dotfiles repo is the easy way.
 3. Check what it binds: `universal-tiling-window-manager check`.
 
-The running app notices a new export within a couple of seconds; **Reload configuration** in its menu does it immediately. With no export at all it uses Rectangle's recommended shortcuts, so it works out of the box.
+The running app notices a changed file within a couple of seconds; **Reload configuration** in its menu does it immediately.
 
 `check` prints every shortcut with the chord it becomes on this machine, everything it could not bind and why, and the behaviour settings it read. On Windows:
 
@@ -80,6 +75,15 @@ Bindings (42 chords):
 ```
 
 The export is looked for in this order: `--config` or `UTWM_CONFIG`; `rectangle_config` in the overrides file below; `~/.config/rectangle-pro/RectangleProConfig.json`; `~/.config/rectangle/RectangleConfig.json`; Rectangle's built-in defaults.
+
+## Coming from Rectangle Pro
+
+1. Rectangle Pro → Settings → General → Export, and put the file at `~/.config/rectangle-pro/RectangleProConfig.json`.
+2. Check what it binds: `universal-tiling-window-manager check`. On the Mac every shortcut binds as it is, keypad Clear included.
+3. Quit Rectangle Pro and turn off its launch at login. While both run they answer the same shortcuts, and this app's menu says so until Rectangle Pro quits.
+4. Start this app, give it Accessibility access, and tick **Start at login**.
+
+Everything the export binds and this app supports carries over: the shortcuts and their cycles, the repeat behaviour, gaps, custom positions, and the apps Rectangle ignores (`disabledApps`, by bundle id). Drag-to-snap doesn't; macOS's own window tiling covers dragging (System Settings → Desktop & Dock). To change a shortcut later, export again from Rectangle Pro, which can stay installed as the editor without launching at login, or set it under `[mac.shortcuts]` in `config.toml`.
 
 ## How keys translate
 
@@ -123,8 +127,8 @@ leftHalf = "ctrl+option+h"
 
 ## What it does
 
-On both machines, all of Rectangle's single-window actions up to eighths, with Rectangle's repeat behaviour for each:
-- halves, which on a repeat move on to the display in that direction (from a Rectangle Pro export) or cycle ½ → ⅔ → ⅓ (from free Rectangle's, by default), and center half;
+On both machines, every single-window action up to eighths, each with its repeat behaviour:
+- halves, which on a repeat cycle ½ → ⅔ → ⅓, or move on to the display in that direction when a Rectangle Pro export asks for it, and center half;
 - corners;
 - thirds and two thirds;
 - fourths and three fourths;
@@ -133,12 +137,14 @@ On both machines, all of Rectangle's single-window actions up to eighths, with R
 - make larger and smaller, restore;
 - next and previous display, keeping the edges a window was against.
 
-From Rectangle Pro:
+Moving on goes the way Rectangle Pro does it: a second ⌃⌥← puts the window in the right half of the display to the left, a third in that display's left half, and at the outermost display a repeat leaves it where it is; →, ↑ and ↓ work the same way.
+
+Three more come from Rectangle Pro:
 - **Fill Left and Fill Right**: the largest empty area against that side of the screen, or the half when there is none.
 - **Tile N×M** (`tile2x3` and friends): every window on the display in a grid, the focused one first.
 - **Custom Size & Position**: including its repetitions.
 
-Several actions on one shortcut cycle on repeated presses, as in Rectangle 2.0 and Rectangle Pro. The settings that shape all this are read from the export: repeat mode and cycle sizes, gaps and screen-edge gaps, almost-maximize size, step size, minimum window size, display order, and what happens to windows that refuse a size. `check` lists any it reads but does not apply.
+Several actions on one shortcut cycle on repeated presses. The settings that shape all this come from the export, when there is one: repeat mode and cycle sizes, gaps and screen-edge gaps, almost-maximize size, step size, minimum window size, display order, and what happens to windows that refuse a size. `check` lists any it reads but does not apply.
 
 Not supported yet; `check` names them when an export binds them:
 - the remaining grid actions (ninths, twelfths, sixteenths, vertical thirds and sixths), the move actions, Specified, and move-to-display-N;

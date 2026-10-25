@@ -1,6 +1,6 @@
 [package]
 name = "universal-tiling-window-manager"
-description = "Rectangle Pro's keyboard shortcuts on Windows and the Mac, configured by Rectangle Pro's own export"
+description = "A tiling window manager you drive from the keyboard, on Windows and the Mac, with one configuration for both"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

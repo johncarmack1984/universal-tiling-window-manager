@@ -1,6 +1,6 @@
 [package]
 name = "utwm-config"
-description = "Reads Rectangle and Rectangle Pro settings exports and resolves them into Windows key bindings"
+description = "The configuration (Rectangle's shortcuts, a Rectangle or Rectangle Pro export, config.toml) resolved into key bindings for Windows and the Mac"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

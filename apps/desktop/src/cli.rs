@@ -113,7 +113,7 @@ pub fn run(invocation: Invocation) -> ExitCode {
         #[cfg(not(windows))]
         Command::Probe { .. } => {
             print_to_terminal(
-                "probe is for Windows, where shortcuts are translated; elsewhere each shortcut is the key Rectangle Pro stored, and `check` lists them.",
+                "probe is for Windows, where shortcuts are translated; elsewhere each shortcut is the key the configuration names, and `check` lists them.",
             );
             ExitCode::FAILURE
         }

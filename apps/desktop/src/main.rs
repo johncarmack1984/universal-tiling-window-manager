@@ -1,10 +1,10 @@
-//! universal-tiling-window-manager: Rectangle Pro's keyboard shortcuts on
-//! Windows and the Mac, configured by Rectangle Pro's own settings export.
+//! universal-tiling-window-manager: a tiling window manager you drive from the
+//! keyboard, on Windows and the Mac, with one configuration for both.
 //!
 //! With no arguments it runs in the tray (the menu bar on the Mac). The
-//! subcommands are for the command line: `check` shows what an export binds,
-//! `probe` shows what the keyboard delivers (Windows), and `quit`, `reload` and
-//! `pause` talk to the running instance.
+//! subcommands are for the command line: `check` shows what the configuration
+//! binds, `probe` shows what the keyboard delivers (Windows), and `quit`,
+//! `reload`, `pause` and `update` talk to the running instance.
 
 // Release builds have no console window; `check` and `probe` attach to the
 // terminal that launched them instead.

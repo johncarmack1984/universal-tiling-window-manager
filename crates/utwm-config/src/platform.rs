@@ -1,8 +1,8 @@
 //! Which machine the bindings are for.
 //!
-//! The export is the same file on both. On Windows each Mac shortcut becomes
-//! the Windows key in the same position; on the Mac it stays exactly what
-//! Rectangle Pro bound, so the app can run there in Rectangle Pro's place.
+//! The same configuration serves both. On Windows each Mac shortcut becomes
+//! the Windows key in the same position; on the Mac it stays exactly as the
+//! configuration has it.
 
 use std::fmt;
 
