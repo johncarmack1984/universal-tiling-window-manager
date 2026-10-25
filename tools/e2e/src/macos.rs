@@ -31,17 +31,24 @@ use utwm_layout::{Engine, PixelRect, Plan, Request, Screen};
 const START: PixelRect = PixelRect::new(300, 200, 1100, 800);
 
 /// What gets pressed, in order. With Rectangle's default cycle sizes the
-/// three left halves are ½, ⅔ and ⅓.
+/// three left halves are ½, ⅔ and ⅓. The display moves need a second display;
+/// with one, the engine has nothing to plan for them and they are skipped.
 const PRESSES: &[ActionId] = &[
     ActionId::LeftHalf,
     ActionId::LeftHalf,
     ActionId::LeftHalf,
     ActionId::RightHalf,
+    ActionId::NextDisplay,
+    ActionId::PreviousDisplay,
     ActionId::TopLeft,
+    ActionId::NextDisplay,
     ActionId::BottomRight,
+    ActionId::PreviousDisplay,
     ActionId::FirstThird,
     ActionId::CenterTwoThirds,
     ActionId::Maximize,
+    ActionId::NextDisplay,
+    ActionId::PreviousDisplay,
     ActionId::Smaller,
     ActionId::Center,
     ActionId::Restore,
