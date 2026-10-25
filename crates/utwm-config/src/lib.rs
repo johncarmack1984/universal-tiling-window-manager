@@ -1,11 +1,11 @@
-//! Rectangle and Rectangle Pro settings exports, resolved into key bindings for
-//! Windows or the Mac.
+//! The configuration, resolved into key bindings for Windows or the Mac: the
+//! default shortcuts or an imported Rectangle Pro config, with `config.toml`
+//! on top.
 //!
-//! The export is the configuration on both machines: Rectangle Pro writes
-//! `RectangleProConfig.json`, the dotfiles carry it around, and this crate
-//! reads it. On Windows it translates each macOS key code to the Windows key in
-//! the same physical position; on the Mac the shortcuts stay as they are. The
-//! result goes to the platform's shortcut listener and the window engine.
+//! The same files serve both machines, and the dotfiles carry them around. On
+//! Windows each macOS key code becomes the Windows key in the same physical
+//! position; on the Mac the shortcuts stay as they are. The result goes to the
+//! platform's shortcut listener and the window engine.
 
 pub mod actions;
 pub mod bindings;

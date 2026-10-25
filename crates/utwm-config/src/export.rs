@@ -176,16 +176,16 @@ impl ExportKind {
         match self {
             Self::RectanglePro => "Rectangle Pro",
             Self::Rectangle => "Rectangle",
-            Self::Other => "Rectangle-format",
+            Self::Other => "another app",
         }
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExportError {
-    #[error("the export is {0} bytes; Rectangle's own limit is 1 MiB")]
+    #[error("the file is {0} bytes; a config to import is at most 1 MiB")]
     TooLarge(usize),
-    #[error("not a Rectangle export: {0}")]
+    #[error("not a config this app can import: {0}")]
     Json(#[from] serde_json::Error),
 }
 

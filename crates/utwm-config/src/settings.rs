@@ -413,7 +413,7 @@ impl Settings {
             not_applied.push((
                 "smallerLargerOffsetV2".to_owned(),
                 format!(
-                    "Rectangle Pro step of {step}; Make Larger/Smaller use sizeOffset ({}) until Pro's choice between them is confirmed",
+                    "a step of {step}; Make Larger/Smaller use sizeOffset ({}) instead",
                     settings.size_offset
                 ),
             ));
@@ -421,7 +421,7 @@ impl Settings {
         if let Some(mode) = int("repeatedMaximizeMode").filter(|mode| *mode != 0) {
             not_applied.push((
                 "repeatedMaximizeMode".to_owned(),
-                format!("Rectangle Pro mode {mode} is undocumented; repeated Maximize does nothing extra"),
+                format!("mode {mode} isn't supported; repeated Maximize does nothing extra"),
             ));
         }
         settings.not_applied = not_applied;

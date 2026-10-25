@@ -1,10 +1,8 @@
 # universal-tiling-window-manager
 
-Rectangle Pro's keyboard shortcuts on Windows and the Mac, configured by the export Rectangle Pro writes.
+A tiling window manager you drive from the keyboard, on Windows and the Mac. A shortcut puts the window in a half, a third, a corner, or on another display.
 
-The export is the configuration on both machines. Put it in your dotfiles and the same keys throw windows to the same places everywhere: on the Mac, exactly the shortcuts Rectangle Pro bound; on Windows, the keys in the same positions, so ⌃⌥← is Ctrl+Alt+Left. Pressed again, a half moves on to the display in that direction, as Rectangle Pro does: a second ⌃⌥← puts the window in the right half of the display to the left, a third in that display's left half, and at the outermost display a repeat leaves it where it is; →, ↑ and ↓ work the same way. Window positions are computed by a port of Rectangle's own calculations, so a left third is the same third, down to the pixel rounding.
-
-On the Mac it runs in Rectangle Pro's place. It lives in the tray on Windows and in the menu bar on the Mac, and it has no settings window: the export is the settings, `config.toml` holds whatever differs between the machines, and Rectangle Pro, if you keep it installed, can still edit the shortcuts and export them again.
+One configuration serves both machines, with the same keys in the same places: ⌃⌥← on the Mac is Ctrl+Alt+Left on Windows. It lives in the tray on Windows and in the menu bar on the Mac, updates itself from signed releases, and imports Rectangle Pro configs.
 
 ## Install
 
@@ -39,67 +37,41 @@ just install
 
 The command line is inside the app: `"/Applications/Window Manager.app/Contents/MacOS/universal-tiling-window-manager" check`. A symlink on your PATH shortens that to `universal-tiling-window-manager check`, as on Windows. Start the app itself from Finder, Spotlight or `open -a "Window Manager"` rather than from a terminal, or macOS counts it as part of the terminal and asks for the terminal's Accessibility access instead of its own.
 
-## Switching from Rectangle Pro on the Mac
+## Shortcuts
 
-1. Rectangle Pro → Settings → General → Export, and put the file at `~/.config/rectangle-pro/RectangleProConfig.json`.
-2. Check what it binds: `universal-tiling-window-manager check`. On the Mac every shortcut binds as it is, keypad Clear included.
-3. Quit Rectangle Pro and turn off its launch at login. While both run they answer the same shortcuts, and this app's menu says so until Rectangle Pro quits.
-4. Start this app, give it Accessibility access, and tick **Start at login**.
+| Action | Mac | Windows | Name in config.toml |
+|---|---|---|---|
+| Left, right, top, bottom half | ⌃⌥← ⌃⌥→ ⌃⌥↑ ⌃⌥↓ | Ctrl+Alt+Left, Right, Up, Down | `leftHalf` `rightHalf` `topHalf` `bottomHalf` |
+| Top left, top right, bottom left, bottom right | ⌃⌥U ⌃⌥I ⌃⌥J ⌃⌥K | Ctrl+Alt+U, I, J, K | `topLeft` `topRight` `bottomLeft` `bottomRight` |
+| First, center, last third | ⌃⌥D ⌃⌥F ⌃⌥G | Ctrl+Alt+D, F, G | `firstThird` `centerThird` `lastThird` |
+| First, center, last two thirds | ⌃⌥E ⌃⌥R ⌃⌥T | Ctrl+Alt+E, R, T | `firstTwoThirds` `centerTwoThirds` `lastTwoThirds` |
+| Maximize | ⌃⌥↩ | Ctrl+Alt+Enter | `maximize` |
+| Maximize height | ⌃⌥⇧↑ | Ctrl+Alt+Shift+Up | `maximizeHeight` |
+| Larger, smaller | ⌃⌥= ⌃⌥- | Ctrl+Alt+=, - | `larger` `smaller` |
+| Center | ⌃⌥C | Ctrl+Alt+C | `center` |
+| Restore | ⌃⌥⌫ | Ctrl+Alt+Backspace | `restore` |
+| Next, previous display | ⌃⌥⌘→ ⌃⌥⌘← | Ctrl+Alt+Win+Right, Left | `nextDisplay` `previousDisplay` |
 
-Everything the export binds and this app supports carries over: the shortcuts and their cycles, the repeat behaviour, gaps, custom positions, and the apps Rectangle ignores (`disabledApps`, by bundle id). Drag-to-snap doesn't; macOS's own window tiling covers dragging (System Settings → Desktop & Dock). To change a shortcut later, export again from Rectangle Pro, which can stay installed as the editor without launching at login, or set it under `[mac.shortcuts]` in `config.toml`.
+Press a half again and it cycles through two thirds and one third. Every action is in the menu too, with its shortcut if it has one.
 
-## The export
+These have no shortcut until you give them one:
+- center half: `centerHalf`;
+- almost maximize, and growing or shrinking one way: `almostMaximize`, `largerWidth`, `smallerWidth`, `largerHeight`, `smallerHeight`;
+- fourths and three fourths: `firstFourth`, `secondFourth`, `thirdFourth`, `lastFourth`, `firstThreeFourths`, `centerThreeFourths`, `lastThreeFourths`;
+- sixths: `topLeftSixth`, `topCenterSixth`, `topRightSixth`, `bottomLeftSixth`, `bottomCenterSixth`, `bottomRightSixth`;
+- eighths: `topLeftEighth`, `topCenterLeftEighth`, `topCenterRightEighth`, `topRightEighth`, `bottomLeftEighth`, `bottomCenterLeftEighth`, `bottomCenterRightEighth`, `bottomRightEighth`;
+- fill: `fillLeft` and `fillRight` take the largest empty area against that side of the screen, or the half when there is none;
+- tile: `tile1x2`, `tile1x3`, `tile1x4`, `tile2x1`, `tile2x2` and `tile2x3` lay every window on the display out in a grid, the focused one first.
 
-1. On the Mac: Rectangle Pro → Settings → General → Export. Free Rectangle's export works too.
-2. On each machine, put the file at `~/.config/rectangle-pro/RectangleProConfig.json` (free Rectangle's goes in `~/.config/rectangle/RectangleConfig.json`). A dotfiles repo is the easy way.
-3. Check what it binds: `universal-tiling-window-manager check`.
+## Configuration
 
-The running app notices a new export within a couple of seconds; **Reload configuration** in its menu does it immediately. With no export at all it uses Rectangle's recommended shortcuts, so it works out of the box.
-
-`check` prints every shortcut with the chord it becomes on this machine, everything it could not bind and why, and the behaviour settings it read. On Windows:
-
-```
-Bindings (41 chords):
-  ⌃⌥←          Ctrl+Alt+Left       leftHalf
-  ⌃⌥E          Ctrl+Alt+E          firstTwoThirds → fillLeft (cycles on repeat)
-  ⌃⌥ Keypad 7  Ctrl+Alt+Num7       bottomLeftEighth
-  ⌃⌥X          Ctrl+Alt+X          custom position "Left 1/3 Below Movie"
-
-Not bound on Windows (1):
-  topLeftEighth  ⌃⌥ Keypad Clear  lands on NumLock, a lock key; lock keys are never bound (RustDesk taps NumLock to sync lock state)
-```
-
-On the Mac the same export binds all 42, each as Rectangle Pro shows it:
-
-```
-Bindings (42 chords):
-  ⌃⌥←              leftHalf
-  ⌃⌥E              firstTwoThirds → fillLeft (cycles on repeat)
-  ⌃⌥ Keypad Clear  topLeftEighth
-  ⌃⌥X              custom position "Left 1/3 Below Movie"
-```
-
-The export is looked for in this order: `--config` or `UTWM_CONFIG`; `rectangle_config` in the overrides file below; `~/.config/rectangle-pro/RectangleProConfig.json`; `~/.config/rectangle/RectangleConfig.json`; Rectangle's built-in defaults.
-
-## How keys translate
-
-On the Mac nothing translates: a shortcut is the key code and modifiers the export stores, registered the way Rectangle registers its own (Carbon hot keys). Registering them takes no permission, and the app never sees any other keystroke.
-
-On Windows each Mac shortcut binds to the Windows key in the same physical position, not the key with the same label, which is also how macOS key codes work. Control becomes Ctrl, Option becomes Alt, Command becomes Win, and Shift stays Shift: what a Mac keyboard sends to Windows, and what RustDesk delivers in its default Map mode when a Mac drives the Windows machine. Keypad keys stay keypad keys whatever the NumLock state, and Home stays distinct from keypad 7; matching is by scan code, which virtual-key codes can't do once NumLock is off.
-
-Keys in the NumLock, CapsLock and ScrollLock positions are never bound on Windows: a binding would toggle the lock, and RustDesk taps NumLock on its own to keep lock state in sync. On a Mac keyboard that is the keypad's Clear key, which the Mac binds as usual.
-
-`universal-tiling-window-manager probe` logs every key event for a minute without swallowing anything, which shows what a keyboard or a remote-control app actually delivers to Windows.
-
-## Per-machine overrides
-
-Whatever differs between the machines goes in `~/.config/universal-tiling-window-manager/config.toml`. The file is optional; every key in it is. The top-level keys are Windows', and the `[mac]` table is the Mac's, so one file in the dotfiles serves both.
+Everything lives in `~/.config/universal-tiling-window-manager/config.toml`. The file is optional, and so is every key in it. Top-level keys are for Windows and the `[mac]` table is for the Mac, so one file in your dotfiles serves both machines. The running app notices a change within a couple of seconds; **Reload configuration** in its menu does it right away.
 
 ```toml
-# Read the export from somewhere else (both machines).
-rectangle_config = "~/Dropbox/RectangleProConfig.json"
+# A Rectangle Pro config to import, if it isn't at the usual path (below).
+import = "~/Dropbox/RectangleProConfig.json"
 
-# Windows apps to leave alone, by executable name (Rectangle's "Ignore app").
+# Windows apps to leave alone, by executable name.
 ignored_apps = ["mstsc.exe"]
 
 # What each Mac modifier becomes on Windows: ctrl, alt, shift, win or none.
@@ -110,7 +82,7 @@ command = "win"
 [shortcuts]
 topLeftEighth = "ctrl+alt+num0"
 
-# Mac apps to leave alone, by bundle id, on top of the export's own list.
+# Mac apps to leave alone, by bundle id.
 [mac]
 ignored_apps = ["com.apple.Terminal"]
 
@@ -121,26 +93,29 @@ ignored_apps = ["com.apple.Terminal"]
 leftHalf = "ctrl+option+h"
 ```
 
-## What it does
+`universal-tiling-window-manager check` prints every shortcut as it binds on this machine, anything it couldn't bind and why, and the settings in effect.
 
-On both machines, all of Rectangle's single-window actions up to eighths, with Rectangle's repeat behaviour for each:
-- halves, which on a repeat move on to the display in that direction (from a Rectangle Pro export) or cycle ½ → ⅔ → ⅓ (from free Rectangle's, by default), and center half;
-- corners;
-- thirds and two thirds;
-- fourths and three fourths;
-- sixths and eighths;
-- maximize, almost maximize, maximize height, center;
-- make larger and smaller, restore;
-- next and previous display, keeping the edges a window was against.
+### Importing a Rectangle Pro config
 
-From Rectangle Pro:
-- **Fill Left and Fill Right**: the largest empty area against that side of the screen, or the half when there is none.
-- **Tile N×M** (`tile2x3` and friends): every window on the display in a grid, the focused one first.
-- **Custom Size & Position**: including its repetitions.
+Export it from Rectangle Pro (Settings → General → Export) and put the file at `~/.config/rectangle-pro/RectangleProConfig.json`, or name it with `import` in config.toml. Its shortcuts, gaps, custom positions and ignored apps replace the defaults, and config.toml still applies on top. A shortcut it gives several actions cycles through them on repeated presses.
 
-Several actions on one shortcut cycle on repeated presses, as in Rectangle 2.0 and Rectangle Pro. The settings that shape all this are read from the export: repeat mode and cycle sizes, gaps and screen-edge gaps, almost-maximize size, step size, minimum window size, display order, and what happens to windows that refuse a size. `check` lists any it reads but does not apply.
+With an imported config, a repeated half can move on to the next display instead of cycling sizes: a second ⌃⌥← puts the window in the right half of the display to the left, a third press in that display's left half, and at the outermost display it stays put; →, ↑ and ↓ work the same way.
 
-Not supported yet; `check` names them when an export binds them:
+On the Mac, quit Rectangle Pro and turn off its launch at login, since both answer the same shortcuts; the menu says so while it runs.
+
+## How keys translate
+
+On the Mac nothing translates: a shortcut is exactly the key and modifiers configured, registered as a Carbon hot key. Registering them takes no permission, and the app never sees any other keystroke.
+
+On Windows each Mac shortcut binds to the Windows key in the same physical position, not the key with the same label, which is also how macOS key codes work. Control becomes Ctrl, Option becomes Alt, Command becomes Win, and Shift stays Shift: what a Mac keyboard sends to Windows, and what RustDesk delivers in its default Map mode when a Mac drives the Windows machine. Keypad keys stay keypad keys whatever the NumLock state, and Home stays distinct from keypad 7; matching is by scan code, which virtual-key codes can't do once NumLock is off.
+
+Keys in the NumLock, CapsLock and ScrollLock positions are never bound on Windows: a binding would toggle the lock, and RustDesk taps NumLock on its own to keep lock state in sync. On a Mac keyboard that is the keypad's Clear key, which the Mac binds as usual.
+
+`universal-tiling-window-manager probe` logs every key event for a minute without swallowing anything, which shows what a keyboard or a remote-control app actually delivers to Windows.
+
+## Not supported yet
+
+`check` names these when an imported config binds them:
 - the remaining grid actions (ninths, twelfths, sixteenths, vertical thirds and sixths), the move actions, Specified, and move-to-display-N;
 - multi-window actions other than tiling (tile all, cascade, reverse);
 - Todo mode, Stash and Layouts;
@@ -162,7 +137,7 @@ universal-tiling-window-manager [--config <export.json>] [command]
   reload                make the running instance re-read its configuration
   pause                 pause or resume the running instance's shortcuts
   quit                  stop the running instance
-  update                make the running instance install the latest release (Mac)
+  update                make the running instance install the newest release
   version               print the version
 ```
 
@@ -172,8 +147,8 @@ The log is at `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on Window
 
 | Crate | What it is |
 |---|---|
-| `crates/utwm-config` | The export format, bindings for either platform, the macOS key code to Windows scan code translation, and the key matcher the Windows hook runs |
-| `crates/utwm-layout` | Rectangle's window calculations, ported; pure, so its tests run anywhere |
+| `crates/utwm-config` | config.toml and the import format, bindings for either platform, the macOS key code to Windows scan code translation, and the key matcher the Windows hook runs |
+| `crates/utwm-layout` | Where each action puts a window; pure, so its tests run anywhere |
 | `crates/utwm-windows` | Win32: the low-level keyboard hook, finding and placing windows, displays, start at login |
 | `crates/utwm-macos` | macOS: Carbon hot keys, finding and placing windows through the Accessibility API, displays, start at login (a LaunchAgent) |
 | `apps/desktop` | The Tauri 3 tray app and the command line, one codebase for both platforms |
@@ -182,9 +157,9 @@ The log is at `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on Window
 
 `just check` runs formatting, clippy and the tests. `just run` starts the app from source with debug logging, and `just e2e` then runs the end-to-end check for that platform, which opens a window of its own and moves only that.
 
-On Windows it presses shortcuts the way RustDesk delivers them and checks where the window lands to the pixel. It expects a 1920×1080 display with a bottom taskbar and the export from the author's Mac, so treat it as a template for other setups.
+On Windows it presses shortcuts the way RustDesk delivers them and checks where the window lands to the pixel. It expects a 1920×1080 display with a bottom taskbar and the author's imported config, so treat it as a template for other setups.
 
-On the Mac it posts the configured shortcuts as key events and checks that each lands exactly where the layout engine says, on any display arrangement and with any export. It needs the app running with Accessibility access, Rectangle Pro quit, and Accessibility access for the terminal running the check, which posting key events requires.
+On the Mac it posts the configured shortcuts as key events and checks that each lands exactly where the layout engine says, on any display arrangement and with any export. It needs the app running with Accessibility access, no other window manager answering the same shortcuts, and Accessibility access for the terminal running the check, which posting key events requires.
 
 ### Releases
 
@@ -192,4 +167,4 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org): `fea
 
 ## License
 
-MIT. The window calculations are ported from [Rectangle](https://github.com/rxhanson/Rectangle) (MIT); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Not affiliated with Rectangle, Rectangle Pro or Knollsoft.
+MIT. Some of the window calculations are ported from MIT-licensed work credited in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

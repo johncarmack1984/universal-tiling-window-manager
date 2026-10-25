@@ -1,6 +1,6 @@
 [package]
 name = "utwm-layout"
-description = "Rectangle's window calculations, ported: where each action puts a window"
+description = "Where each action puts a window: halves, thirds, corners, displays and gaps"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -46,12 +46,10 @@ pub fn status_line(config: &Resolved, error: Option<&str>, refused: usize) -> St
     if let Some(error) = error {
         return format!("Config error, keeping previous shortcuts: {error}");
     }
-    let source = match (&config.source.kind, &config.source.version) {
-        (Some(kind), Some(version)) if !version.is_empty() => {
-            format!("{} build {version}", kind.label())
-        }
-        (Some(kind), _) => kind.label().to_owned(),
-        (None, _) => "Rectangle defaults".to_owned(),
+    let count = config.bindings.len();
+    let shortcuts = match &config.source.kind {
+        Some(kind) => format!("{count} shortcuts imported from {}", kind.label()),
+        None => format!("{count} default shortcuts"),
     };
     let skipped = if config.skipped.is_empty() {
         String::new()
@@ -63,10 +61,7 @@ pub fn status_line(config: &Resolved, error: Option<&str>, refused: usize) -> St
     } else {
         format!(", {refused} taken by other apps")
     };
-    format!(
-        "{source}: {} shortcuts{skipped}{refused}",
-        config.bindings.len()
-    )
+    format!("{shortcuts}{skipped}{refused}")
 }
 
 /// A chord the way this platform's keyboard labels it: `Ctrl+Alt+Left` on

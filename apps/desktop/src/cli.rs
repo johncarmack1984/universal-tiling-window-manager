@@ -17,10 +17,10 @@ commands:
   update                make the running instance install the newest release
   version               print the version
 
-The export is looked for in ~/.config/rectangle-pro/RectangleProConfig.json,
-then ~/.config/rectangle/RectangleConfig.json; UTWM_CONFIG or --config names
-another. Per-machine overrides live in
-~/.config/universal-tiling-window-manager/config.toml.";
+Configuration lives in ~/.config/universal-tiling-window-manager/config.toml.
+A Rectangle Pro config is imported from
+~/.config/rectangle-pro/RectangleProConfig.json, or from the file that
+`import` in config.toml, UTWM_CONFIG or --config names.";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
@@ -113,7 +113,7 @@ pub fn run(invocation: Invocation) -> ExitCode {
         #[cfg(not(windows))]
         Command::Probe { .. } => {
             print_to_terminal(
-                "probe is for Windows, where shortcuts are translated; elsewhere each shortcut is the key Rectangle Pro stored, and `check` lists them.",
+                "probe is for Windows, where shortcuts are translated; elsewhere each shortcut is the key the configuration names, and `check` lists them.",
             );
             ExitCode::FAILURE
         }

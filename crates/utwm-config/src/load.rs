@@ -1,13 +1,13 @@
 //! Finding and loading configuration from disk.
 //!
-//! The export is looked for in this order, first hit wins:
+//! The config to import is looked for in this order, first hit wins:
 //!
 //! 1. an explicit path (`--config` or `UTWM_CONFIG`);
-//! 2. `rectangle_config` in the overrides file;
+//! 2. `import` in config.toml;
 //! 3. `~/.config/rectangle-pro/RectangleProConfig.json`, where the dotfiles put
-//!    the Mac's Rectangle Pro export;
-//! 4. `~/.config/rectangle/RectangleConfig.json`, for free Rectangle;
-//! 5. Rectangle's own recommended shortcuts, built in.
+//!    the Mac's Rectangle Pro config;
+//! 4. `~/.config/rectangle/RectangleConfig.json`, for free Rectangle's;
+//! 5. none: the default shortcuts, built in.
 //!
 //! The same paths serve both machines, and what is found resolves for the
 //! platform this build runs on.
@@ -62,7 +62,7 @@ pub fn watched_paths(home: &Path, explicit: Option<&Path>, overrides: &Overrides
     if let Some(path) = explicit {
         paths.push(path.to_path_buf());
     }
-    if let Some(path) = overrides.rectangle_config_path(home) {
+    if let Some(path) = overrides.import_path(home) {
         paths.push(path);
     }
     paths.extend(default_export_paths(home));
@@ -93,7 +93,7 @@ pub fn load_with(
 ) -> Result<Resolved, LoadError> {
     let chosen = explicit
         .map(Path::to_path_buf)
-        .or_else(|| overrides.rectangle_config_path(home));
+        .or_else(|| overrides.import_path(home));
     let path = match chosen {
         // A path someone named must exist; silently falling back would hide a typo.
         Some(path) => Some(path),
@@ -125,8 +125,8 @@ pub fn load_with(
     ))
 }
 
-/// Rectangle's recommended shortcuts for this platform, for when there is no
-/// export or it can't be read.
+/// The default shortcuts for this platform, for when there is nothing to
+/// import or it can't be read: Rectangle's recommended set.
 pub fn builtin(overrides: &Overrides) -> Resolved {
     bindings::resolve(
         &builtin_export(),
