@@ -6,7 +6,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use tauri::{Manager, RunEvent};
-use utwm_config::bindings::{self, Source};
 use utwm_config::load;
 use utwm_windows::events::Events;
 use utwm_windows::hook::{Hook, Mode};
@@ -33,9 +32,7 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
         Ok(config) => (config, None),
         Err(error) => {
             tracing::warn!(%error, "configuration not loaded; using Rectangle's defaults");
-            let fallback =
-                bindings::resolve(&load::builtin_export(), &overrides, Source::builtin());
-            (fallback, Some(error.to_string()))
+            (load::builtin(&overrides), Some(error.to_string()))
         }
     };
     tracing::info!(

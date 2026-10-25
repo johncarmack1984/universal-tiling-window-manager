@@ -219,6 +219,24 @@ impl fmt::Display for Chord {
     }
 }
 
+impl Chord {
+    /// The same chord on a Mac keyboard: the macOS key code in this position,
+    /// with Control, Option, Shift and Command for Ctrl, Alt, Shift and Win.
+    /// `None` for keys a Mac keyboard doesn't have.
+    pub fn to_mac(self) -> Option<MacChord> {
+        let key_code = keys::to_mac_key_code(self.key)?;
+        Some(MacChord {
+            key_code: i64::from(key_code),
+            modifiers: MacModifiers {
+                control: self.modifiers.ctrl,
+                option: self.modifiers.alt,
+                shift: self.modifiers.shift,
+                command: self.modifiers.win,
+            },
+        })
+    }
+}
+
 /// Why a Windows chord in the override file didn't parse.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ChordParseError {
@@ -319,6 +337,26 @@ mod tests {
         assert_eq!(MacChord::new(123, 786_432).to_string(), "⌃⌥←");
         assert_eq!(MacChord::new(71, 786_432).to_string(), "⌃⌥ Keypad Clear");
         assert_eq!(MacChord::new(126, 917_504).to_string(), "⌃⌥⇧↑");
+    }
+
+    #[test]
+    fn the_default_map_round_trips_to_the_mac() {
+        let map = ModifierMap::default();
+        for mac in [
+            MacChord::new(123, 786_432),
+            MacChord::new(71, 786_432),
+            MacChord::new(126, 917_504),
+            MacChord::new(124, 1_835_008),
+        ] {
+            let key = keys::from_mac_key_code(mac.key_code).expect("maps");
+            let chord = Chord {
+                modifiers: map.translate(mac.modifiers),
+                key,
+            };
+            assert_eq!(chord.to_mac(), Some(mac), "{mac}");
+        }
+        let menu = Chord::parse("ctrl+menu").expect("parses");
+        assert_eq!(menu.to_mac(), None);
     }
 
     #[test]

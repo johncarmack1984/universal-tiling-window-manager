@@ -1,6 +1,8 @@
 //! `~/.config/universal-tiling-window-manager/config.toml`: the few choices that
-//! only make sense on Windows. Everything else comes from the Mac's export, so
-//! this file is optional and usually absent.
+//! belong to one machine rather than to the export. Everything else comes from
+//! the export, so this file is optional and usually absent. The top-level keys
+//! are Windows'; the `[mac]` table is the Mac's, so one file carried by the
+//! dotfiles can serve both machines.
 //!
 //! ```toml
 //! # Where the export lives, if not ~/.config/rectangle-pro/RectangleProConfig.json
@@ -8,11 +10,17 @@
 //! # Windows apps whose windows are left alone (Rectangle's disabledApps)
 //! ignored_apps = ["mstsc.exe"]
 //!
-//! [modifiers]          # what each Mac modifier becomes
+//! [modifiers]          # what each Mac modifier becomes on Windows
 //! command = "win"
 //!
 //! [shortcuts]          # Windows-only rebinds; "" unbinds
 //! topLeftEighth = "ctrl+alt+num0"
+//!
+//! [mac]                # bundle ids, on top of the export's disabledApps
+//! ignored_apps = ["com.apple.Terminal"]
+//!
+//! [mac.shortcuts]      # Mac-only rebinds, keys named as above; "" unbinds
+//! leftHalf = "ctrl+alt+h"
 //! ```
 
 use std::collections::BTreeMap;
@@ -28,6 +36,20 @@ pub struct Overrides {
     pub rectangle_config: Option<String>,
     pub ignored_apps: Vec<String>,
     pub modifiers: ModifierMap,
+    pub shortcuts: BTreeMap<String, String>,
+    pub mac: MacOverrides,
+}
+
+/// The `[mac]` table: the Mac's counterparts of `ignored_apps` and
+/// `[shortcuts]`. Modifiers need no table there; the export's are the Mac's.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct MacOverrides {
+    /// Bundle ids, e.g. `com.apple.Terminal`.
+    pub ignored_apps: Vec<String>,
+    /// Chords in the same syntax as `[shortcuts]`: keys by their position,
+    /// named as on a PC keyboard, with `ctrl`, `alt` (or `option`), `shift`
+    /// and `cmd` (or `win`).
     pub shortcuts: BTreeMap<String, String>,
 }
 
@@ -105,6 +127,30 @@ mod tests {
             overrides.shortcuts.get("restore").map(String::as_str),
             Some("")
         );
+    }
+
+    #[test]
+    fn the_mac_table_parses_beside_the_windows_keys() {
+        let overrides = Overrides::parse(
+            r#"
+            ignored_apps = ["mstsc.exe"]
+            [shortcuts]
+            topLeftEighth = "ctrl+alt+num0"
+            [mac]
+            ignored_apps = ["com.apple.Terminal"]
+            [mac.shortcuts]
+            leftHalf = "ctrl+option+h"
+            "#,
+            Path::new("config.toml"),
+        )
+        .expect("parses");
+        assert_eq!(overrides.ignored_apps, ["mstsc.exe"]);
+        assert_eq!(overrides.mac.ignored_apps, ["com.apple.Terminal"]);
+        assert_eq!(
+            overrides.mac.shortcuts.get("leftHalf").map(String::as_str),
+            Some("ctrl+option+h")
+        );
+        assert!(Overrides::parse("[mac]\nmodifiers = {}", Path::new("config.toml")).is_err());
     }
 
     #[test]

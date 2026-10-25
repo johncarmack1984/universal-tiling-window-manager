@@ -1,5 +1,6 @@
 //! Where Rectangle's actions put a window, ported from Rectangle's Swift
-//! (rxhanson/Rectangle@7c5c9c5, v2.0.4, MIT) to work on Windows pixels.
+//! (rxhanson/Rectangle@7c5c9c5, v2.0.4, MIT) to work in whole screen units:
+//! physical pixels on Windows, points on the Mac.
 //!
 //! The crate is pure: it never touches a window. The platform layer asks
 //! [`Engine::plan`] where an action goes, moves the window, and reports where it

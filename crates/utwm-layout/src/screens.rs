@@ -5,14 +5,16 @@ use utwm_config::settings::{ScreenOrdering, Settings};
 
 use crate::geometry::{PixelRect, Rect, px};
 
-/// One display, in physical pixels.
+/// One display, in the platform's screen units.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Screen {
     /// The whole monitor.
     pub frame: PixelRect,
-    /// The monitor minus the taskbar and docked app bars (`rcWork`).
+    /// The monitor minus the taskbar and docked app bars (`rcWork`), or on the
+    /// Mac minus the menu bar and the Dock (`visibleFrame`).
     pub work: PixelRect,
-    /// DPI ÷ 96: how many physical pixels one macOS point (or Windows DIP) is.
+    /// How many screen units one macOS point is: DPI ÷ 96 on Windows (a
+    /// point maps onto a DIP), and 1 on the Mac, which works in points.
     pub scale: f64,
     pub primary: bool,
 }
