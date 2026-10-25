@@ -17,10 +17,10 @@ commands:
   update                make the running instance install the newest release
   version               print the version
 
-The export is looked for in ~/.config/rectangle-pro/RectangleProConfig.json,
-then ~/.config/rectangle/RectangleConfig.json; UTWM_CONFIG or --config names
-another. Per-machine overrides live in
-~/.config/universal-tiling-window-manager/config.toml.";
+Configuration lives in ~/.config/universal-tiling-window-manager/config.toml.
+A Rectangle Pro config is imported from
+~/.config/rectangle-pro/RectangleProConfig.json, or from the file that
+`import` in config.toml, UTWM_CONFIG or --config names.";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {

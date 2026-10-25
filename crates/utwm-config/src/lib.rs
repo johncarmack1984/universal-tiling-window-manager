@@ -1,6 +1,6 @@
-//! The configuration, resolved into key bindings for Windows or the Mac:
-//! Rectangle's recommended shortcuts, or a Rectangle or Rectangle Pro settings
-//! export, with `config.toml`'s per-machine overrides on top.
+//! The configuration, resolved into key bindings for Windows or the Mac: the
+//! default shortcuts or an imported Rectangle Pro config, with `config.toml`
+//! on top.
 //!
 //! The same files serve both machines, and the dotfiles carry them around. On
 //! Windows each macOS key code becomes the Windows key in the same physical

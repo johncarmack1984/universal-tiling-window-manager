@@ -87,9 +87,7 @@ impl fmt::Display for SkipReason {
             Self::MouseButton => f.write_str("a mouse-button shortcut; only keys bind"),
             Self::UnknownKeyCode => f.write_str("a macOS key code this app has no key for"),
             Self::Unsupported => f.write_str("not supported yet"),
-            Self::UnknownAction => {
-                f.write_str("not an action Rectangle or Rectangle Pro is known to have")
-            }
+            Self::UnknownAction => f.write_str("not an action this app knows"),
             Self::Unbound => f.write_str("unbound in config.toml"),
         }
     }
@@ -115,16 +113,16 @@ impl Source {
     pub fn describe(&self) -> String {
         match (&self.kind, &self.path) {
             (Some(kind), Some(path)) => format!(
-                "{} export{} at {}",
+                "imported from {}{} at {}",
                 kind.label(),
                 self.version
                     .as_deref()
-                    .map(|version| format!(", build {version},"))
+                    .map(|version| format!(" (build {version})"))
                     .unwrap_or_default(),
                 path.display()
             ),
-            (Some(kind), None) => format!("{} export", kind.label()),
-            (None, _) => "Rectangle's recommended shortcuts (no export found)".to_owned(),
+            (Some(kind), None) => format!("imported from {}", kind.label()),
+            (None, _) => "the default shortcuts (nothing to import)".to_owned(),
         }
     }
 }

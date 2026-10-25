@@ -29,7 +29,7 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
     let (config, load_error) = match load::load(&home, explicit_config.as_deref()) {
         Ok(config) => (config, None),
         Err(error) => {
-            tracing::warn!(%error, "configuration not loaded; using Rectangle's defaults");
+            tracing::warn!(%error, "configuration not loaded; using the default shortcuts");
             (load::builtin(&overrides), Some(error.to_string()))
         }
     };
