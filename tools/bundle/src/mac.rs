@@ -3,6 +3,7 @@
 //! to macOS.
 
 use std::error::Error;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
@@ -16,6 +17,8 @@ const EXECUTABLE: &str = "universal-tiling-window-manager";
 const APPLICATIONS: &str = "/Applications";
 /// The login item uses SMAppService, which arrived in macOS 13.
 const MINIMUM_SYSTEM: &str = "13.0";
+/// What `--universal` builds for: Apple silicon and Intel.
+const ARCHITECTURES: [&str; 2] = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -30,13 +33,16 @@ struct Names {
 
 pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mut install = false;
+    let mut universal = false;
     for arg in args {
         match arg.as_str() {
             "--install" => install = true,
+            "--universal" => universal = true,
             other => {
-                return Err(
-                    format!("unknown argument `{other}`; the only one is --install").into(),
-                );
+                return Err(format!(
+                    "unknown argument `{other}`; the arguments are --install and --universal"
+                )
+                .into());
             }
         }
     }
@@ -48,14 +54,18 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let names: Names = serde_json::from_str(&config)?;
 
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    run_tool(
-        Command::new(cargo)
-            .args(["build", "--release", "--locked", "-p", EXECUTABLE])
-            .current_dir(root),
-    )?;
-    let release = std::env::var_os("CARGO_TARGET_DIR")
-        .map_or_else(|| root.join("target"), PathBuf::from)
-        .join("release");
+    let target =
+        std::env::var_os("CARGO_TARGET_DIR").map_or_else(|| root.join("target"), PathBuf::from);
+    let release = if universal {
+        build_universal(&cargo, root, &target)?
+    } else {
+        run_tool(
+            Command::new(&cargo)
+                .args(["build", "--release", "--locked", "-p", EXECUTABLE])
+                .current_dir(root),
+        )?;
+        target.join("release")
+    };
     let app = release
         .join("bundle")
         .join("macos")
@@ -90,6 +100,28 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     Ok(())
 }
 
+/// Builds the executable for both architectures and joins the two into one,
+/// in `target/universal-apple-darwin/release`, which it returns.
+fn build_universal(cargo: &OsStr, root: &Path, target: &Path) -> Result<PathBuf> {
+    let mut build = Command::new(cargo);
+    build.args(["build", "--release", "--locked", "-p", EXECUTABLE]);
+    for architecture in ARCHITECTURES {
+        build.args(["--target", architecture]);
+    }
+    run_tool(build.current_dir(root))?;
+    let release = target.join("universal-apple-darwin").join("release");
+    std::fs::create_dir_all(&release)?;
+    let mut lipo = Command::new("lipo");
+    lipo.arg("-create")
+        .arg("-output")
+        .arg(release.join(EXECUTABLE));
+    for architecture in ARCHITECTURES {
+        lipo.arg(target.join(architecture).join("release").join(EXECUTABLE));
+    }
+    run_tool(&mut lipo)?;
+    Ok(release)
+}
+
 fn assemble(app: &Path, executable: &Path, icon: &Path, names: &Names) -> Result<()> {
     if app.exists() {
         std::fs::remove_dir_all(app)?;
@@ -106,14 +138,18 @@ fn assemble(app: &Path, executable: &Path, icon: &Path, names: &Names) -> Result
 }
 
 /// Signs the bundle as `identifier`, with the named certificate or ad hoc,
-/// then checks the signature.
+/// then checks the signature. Notarization wants the hardened runtime, and a
+/// certificate's signature to carry Apple's timestamp.
 fn sign(app: &Path, identifier: &str, identity: Option<&str>) -> Result<()> {
-    run_tool(
-        Command::new("codesign")
-            .args(["--force", "--sign", identity.unwrap_or("-")])
-            .args(["--identifier", identifier])
-            .arg(app),
-    )?;
+    let mut codesign = Command::new("codesign");
+    codesign
+        .args(["--force", "--options", "runtime"])
+        .args(["--sign", identity.unwrap_or("-")])
+        .args(["--identifier", identifier]);
+    if identity.is_some() {
+        codesign.arg("--timestamp");
+    }
+    run_tool(codesign.arg(app))?;
     run_tool(
         Command::new("codesign")
             .args(["--verify", "--strict"])
