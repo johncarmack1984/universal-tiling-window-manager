@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "universal-tiling-window-manager",
+      "initial-version": "0.1.0",
+      "include-component-in-tag": false,
+      "skip-github-release": true,
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "Cargo.toml",
+        { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='universal-tiling-window-manager')].version" },
+        { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='utwm-config')].version" },
+        { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='utwm-layout')].version" },
+        { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='utwm-macos')].version" },
+        { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='utwm-windows')].version" },
+        { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='utwm-bundle')].version" },
+        { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='utwm-e2e')].version" }
+      ]
+    }
+  }
+}

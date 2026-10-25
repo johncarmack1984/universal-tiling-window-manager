@@ -11,7 +11,7 @@ use utwm_config::{Chord, load};
 
 use crate::controller::{self, Command, Controller, Shared};
 use crate::platform::Shortcuts;
-use crate::{logging, poll, tray};
+use crate::{logging, poll, tray, updates};
 
 pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     // Every coordinate this app reads or writes is a physical pixel. Tauri's
@@ -56,6 +56,8 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
         .plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
             tracing::info!(?argv, "already running; ignoring the second launch");
         }))
+        // Reads the endpoint and the public key from tauri.conf.json.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             // A menu bar app: no Dock icon and no menu bar of its own.
             #[cfg(target_os = "macos")]
@@ -75,18 +77,21 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
                 let _ = reload.send(Command::Reload);
             })?;
 
+            let updates = updates::start(handle.clone(), commands.clone(), Arc::clone(&shared));
             let controller = Controller::new(
                 Arc::clone(&shared),
                 Arc::new(config),
                 load_error,
                 shortcuts,
                 refused,
+                updates,
             );
             tray::create(
                 &handle,
                 controller.config(),
                 &controller.status(),
                 false,
+                controller.updates_line().as_ref(),
                 commands.clone(),
             )?;
             std::thread::Builder::new()

@@ -17,7 +17,7 @@ use utwm_layout::{Engine, Move, PixelRect, Plan, Request, Screen, align};
 use utwm_windows::events::SystemEvent;
 
 use crate::platform::{self, Control, Shortcuts, Window, monitors, window};
-use crate::tray;
+use crate::{tray, updates};
 
 pub enum Command {
     /// The listener matched binding `index` of the current configuration.
@@ -38,6 +38,10 @@ pub enum Command {
     StatusChanged,
     #[cfg(target_os = "macos")]
     OpenAccessSettings,
+    /// The menu asked for an update check.
+    CheckForUpdates,
+    /// What the update thread is doing, for the menu.
+    Updates(updates::State),
     Quit,
 }
 
@@ -65,6 +69,10 @@ pub struct Controller {
     /// shortcut pressed without it asks once rather than on every press.
     #[cfg(target_os = "macos")]
     asked_for_access: bool,
+    /// The update thread, when this copy was installed the way a release
+    /// installs.
+    updates: Option<updates::Updates>,
+    update_state: updates::State,
     /// The last application window in the foreground, for tray menu actions:
     /// by the time a menu item is clicked on Windows the tray itself has the
     /// focus. The Mac's menu bar never takes it, so the Mac keeps none and
@@ -79,6 +87,7 @@ impl Controller {
         load_error: Option<String>,
         shortcuts: Shortcuts,
         refused: Vec<Chord>,
+        updates: Option<updates::Updates>,
     ) -> Self {
         Self {
             shared,
@@ -89,6 +98,8 @@ impl Controller {
             engine: Engine::new(),
             #[cfg(target_os = "macos")]
             asked_for_access: false,
+            updates,
+            update_state: updates::State::Idle,
             last_target: if cfg!(windows) {
                 window::foreground()
             } else {
@@ -123,6 +134,14 @@ impl Controller {
         &self.config
     }
 
+    /// The menu's updates line, on a copy that updates itself.
+    pub fn updates_line(&self) -> Option<tray::UpdatesLine> {
+        self.updates.as_ref().map(|_| {
+            let (text, enabled) = self.update_state.menu_line();
+            tray::UpdatesLine { text, enabled }
+        })
+    }
+
     pub fn run(mut self, commands: Receiver<Command>) {
         while let Ok(command) = commands.recv() {
             match command {
@@ -153,6 +172,11 @@ impl Controller {
                 }
                 #[cfg(target_os = "macos")]
                 Command::OpenAccessSettings => self.ask_for_access(),
+                Command::CheckForUpdates => self.check_for_updates(),
+                Command::Updates(state) => {
+                    self.update_state = state;
+                    self.refresh_tray();
+                }
                 Command::Quit => {
                     self.quit();
                     break;
@@ -190,6 +214,16 @@ impl Controller {
             Control::Quit => self.quit(),
             Control::Reload => self.reload(),
             Control::TogglePause => self.toggle_pause(),
+            Control::Update => self.check_for_updates(),
+        }
+    }
+
+    fn check_for_updates(&self) {
+        match &self.updates {
+            Some(updates) => updates.check_now(),
+            None => {
+                tracing::info!("this copy wasn't installed from a release, so it doesn't update")
+            }
         }
     }
 
@@ -485,7 +519,10 @@ impl Controller {
     fn refresh_tray(&self) {
         if let Some(app) = self.shared.app.get() {
             let paused = self.shared.paused.load(Ordering::SeqCst);
-            if let Err(error) = tray::refresh(app, &self.config, &self.status(), paused) {
+            let updates = self.updates_line();
+            if let Err(error) =
+                tray::refresh(app, &self.config, &self.status(), paused, updates.as_ref())
+            {
                 tracing::warn!(%error, "could not update the tray menu");
             }
         }

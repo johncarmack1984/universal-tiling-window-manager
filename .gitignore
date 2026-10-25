@@ -6,6 +6,9 @@
 # Tauri build output and generated schemas
 /apps/desktop/gen
 
+# OpenTofu's provider cache (the lock file is tracked)
+/infra/.terraform/
+
 # Local Claude Code config
 /CLAUDE.md
 /CLAUDE.local.md
