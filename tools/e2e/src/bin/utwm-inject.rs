@@ -1,4 +1,4 @@
-//! `cargo run -p utwm-windows --example inject -- <key>...`
+//! `cargo run -p utwm-e2e --bin utwm-inject -- <key>...`
 //!
 //! Presses the given keys (Windows names, e.g. `LCtrl LAlt F16`) in order and
 //! releases them in reverse, by scan code, the way RustDesk delivers a Mac
@@ -20,4 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(not(windows))]
-fn main() {}
+fn main() -> std::process::ExitCode {
+    eprintln!("utwm-inject presses keys by Windows scan code, so it runs on Windows only");
+    std::process::ExitCode::FAILURE
+}

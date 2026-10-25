@@ -38,14 +38,8 @@ probe seconds="60":
     cargo run -q -p universal-tiling-window-manager -- {{config_flag}} probe {{seconds}}
 
 # End-to-end check against the running app; it opens and moves only its own window.
-[windows]
 e2e:
-    cargo run -q -p utwm-windows --example e2e
-
-# End-to-end check against the running app; it opens and moves only its own window.
-[macos]
-e2e:
-    cargo run -q -p utwm-macos --example e2e
+    cargo run -q -p utwm-e2e
 
 # Install the release build into ~/.cargo/bin, stopping a running copy first.
 install:

@@ -4198,6 +4198,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "utwm-e2e"
+version = "0.1.0"
+dependencies = [
+ "dispatch2",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-core-graphics",
+ "objc2-foundation",
+ "utwm-config",
+ "utwm-layout",
+ "utwm-macos",
+ "utwm-windows",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "utwm-layout"
 version = "0.1.0"
 dependencies = [
@@ -4210,8 +4226,6 @@ name = "utwm-macos"
 version = "0.1.0"
 dependencies = [
  "dispatch2",
- "libc",
- "objc2",
  "objc2-app-kit",
  "objc2-application-services",
  "objc2-core-foundation",

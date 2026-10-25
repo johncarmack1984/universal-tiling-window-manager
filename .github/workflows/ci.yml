@@ -6,10 +6,9 @@ name: ci
 # also make the release build `cargo install --git` would make, so a broken
 # install fails here first.
 #
-# The end-to-end checks (crates/utwm-windows/examples/e2e.rs and
-# crates/utwm-macos/examples/e2e.rs) need a running app, a real desktop and,
-# on the Mac, Accessibility access, so they run by hand: `just run`, then
-# `just e2e`.
+# The end-to-end checks (tools/e2e) need a running app, a real desktop and, on
+# the Mac, Accessibility access, so they run by hand: `just run`, then
+# `just e2e`. Both jobs still build and lint them with the workspace.
 
 on:
   pull_request:

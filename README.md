@@ -167,8 +167,9 @@ The log is at `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on Window
 | `crates/utwm-windows` | Win32: the low-level keyboard hook, finding and placing windows, displays, start at login |
 | `crates/utwm-macos` | macOS: Carbon hot keys, finding and placing windows through the Accessibility API, displays, start at login (a LaunchAgent) |
 | `apps/desktop` | The Tauri 3 tray app and the command line, one codebase for both platforms |
+| `tools/e2e` | The end-to-end checks (`utwm-e2e`, one per platform), and `utwm-inject`, which presses keys by scan code on Windows the way RustDesk does |
 
-`just check` runs formatting, clippy and the tests. `just run` starts the app from source with debug logging, and `just e2e` then runs the end-to-end check, which opens a window of its own and moves only that.
+`just check` runs formatting, clippy and the tests. `just run` starts the app from source with debug logging, and `just e2e` then runs the end-to-end check for that platform, which opens a window of its own and moves only that.
 
 On Windows it presses shortcuts the way RustDesk delivers them and checks where the window lands to the pixel. It expects a 1920×1080 display with a bottom taskbar and the export from the author's Mac, so treat it as a template for other setups.
 
