@@ -19,7 +19,13 @@ The second line starts it in the tray. To have it start with Windows, tick **Sta
 
 To update, stop the running copy first, since Windows won't replace a running executable: `universal-tiling-window-manager quit`, then the `cargo install` line again with `--force`.
 
-On the Mac it is an app, Window Manager, built from a clone with [just](https://just.systems):
+On the Mac it is an app, Window Manager. Download `Window-Manager_<version>_universal.zip` from the [latest release](https://github.com/johncarmack1984/universal-tiling-window-manager/releases/latest), open it, drag Window Manager into /Applications, and open it from there; from then on it opens from Finder or Spotlight like any other app. It is signed with a Developer ID and notarized, and runs on Apple silicon and Intel Macs with macOS 13 or newer.
+
+Moving other apps' windows takes Accessibility access. Until the app has it, the first line of its menu says so; clicking that line, or pressing any shortcut, brings up macOS's prompt and opens System Settings → Privacy & Security → Accessibility with the app in the list, ready to switch on. Tick **Start at login** in its menu to have it start with the Mac; System Settings → General → Login Items lists it under Open at Login.
+
+It keeps itself up to date. A minute after it starts, and every six hours after that, it looks for a newer release; when there is one it downloads it, checks its signature against the key built into the app, puts it in place of the copy in /Applications and restarts, keeping its Accessibility access, since every release carries the same signature. **Check for updates** in its menu, or `universal-tiling-window-manager update`, looks right away. While shortcuts are paused it waits to be asked, since the restart would resume them.
+
+To build it from a clone instead, with [just](https://just.systems):
 
 ```sh
 git clone https://github.com/johncarmack1984/universal-tiling-window-manager
@@ -27,11 +33,7 @@ cd universal-tiling-window-manager
 just install
 ```
 
-`just install` builds the app, puts it in /Applications and starts it in the menu bar; from then on it opens from Finder or Spotlight like any other app. Building needs Rust 1.95 or newer and the Xcode command line tools.
-
-Moving other apps' windows takes Accessibility access. Until the app has it, the first line of its menu says so; clicking that line, or pressing any shortcut, brings up macOS's prompt and opens System Settings → Privacy & Security → Accessibility with the app in the list, ready to switch on. Tick **Start at login** in its menu to have it start with the Mac; System Settings → General → Login Items lists it under Open at Login.
-
-To update, `git pull` and `just install` again; it quits the running copy itself. macOS ties Accessibility access to the app's signature, and the build is signed ad hoc unless you name a certificate, so after each update the app asks for access again (the installer clears the stale grant first, so the switch in System Settings never shows on while doing nothing). Signing with a code-signing certificate from your keychain keeps the access across updates; a self-signed one made in Keychain Access → Certificate Assistant → Create a Certificate, with Code Signing as its type, will do: `UTWM_SIGN_IDENTITY="<certificate name>" just install`.
+`just install` builds the app, puts it in /Applications and starts it in the menu bar. Building needs Rust 1.95 or newer and the Xcode command line tools. To update a build from source, `git pull` and `just install` again; it quits the running copy itself. macOS ties Accessibility access to the app's signature, and the build is signed ad hoc unless you name a certificate, so after each update the app asks for access again (the installer clears the stale grant first, so the switch in System Settings never shows on while doing nothing). Signing with a code-signing certificate from your keychain keeps the access across updates; a self-signed one made in Keychain Access → Certificate Assistant → Create a Certificate, with Code Signing as its type, will do: `UTWM_SIGN_IDENTITY="<certificate name>" just install`. A build from source also updates itself once a release newer than its version comes out, and asks for Accessibility access once more then, since the release's signature is a different one.
 
 The command line is inside the app: `"/Applications/Window Manager.app/Contents/MacOS/universal-tiling-window-manager" check`. A symlink on your PATH shortens that to `universal-tiling-window-manager check`, as on Windows. Start the app itself from Finder, Spotlight or `open -a "Window Manager"` rather than from a terminal, or macOS counts it as part of the terminal and asks for the terminal's Accessibility access instead of its own.
 
@@ -158,6 +160,7 @@ universal-tiling-window-manager [--config <export.json>] [command]
   reload                make the running instance re-read its configuration
   pause                 pause or resume the running instance's shortcuts
   quit                  stop the running instance
+  update                make the running instance install the latest release (Mac)
   version               print the version
 ```
 
@@ -172,7 +175,7 @@ The log is at `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on Window
 | `crates/utwm-windows` | Win32: the low-level keyboard hook, finding and placing windows, displays, start at login |
 | `crates/utwm-macos` | macOS: Carbon hot keys, finding and placing windows through the Accessibility API, displays, start at login (a LaunchAgent) |
 | `apps/desktop` | The Tauri 3 tray app and the command line, one codebase for both platforms |
-| `tools/bundle` | `utwm-bundle`, which builds the Mac app bundle (`just bundle`) and installs it into /Applications (`just install`) |
+| `tools/bundle` | `utwm-bundle`, which builds the Mac app bundle (`just bundle`), for both architectures with `--universal`, and installs it into /Applications (`just install`) |
 | `tools/e2e` | The end-to-end checks (`utwm-e2e`, one per platform), and `utwm-inject`, which presses keys by scan code on Windows the way RustDesk does |
 
 `just check` runs formatting, clippy and the tests. `just run` starts the app from source with debug logging, and `just e2e` then runs the end-to-end check for that platform, which opens a window of its own and moves only that.
@@ -180,6 +183,10 @@ The log is at `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on Window
 On Windows it presses shortcuts the way RustDesk delivers them and checks where the window lands to the pixel. It expects a 1920×1080 display with a bottom taskbar and the export from the author's Mac, so treat it as a template for other setups.
 
 On the Mac it posts the configured shortcuts as key events and checks that each lands exactly where the layout engine says, on any display arrangement and with any export. It needs the app running with Accessibility access, Rectangle Pro quit, and Accessibility access for the terminal running the check, which posting key events requires.
+
+### Releases
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org): `feat:` and `fix:` are what a release is made of, and pull requests are squash-merged, so a pull request's title is its commit. [release-please](https://github.com/googleapis/release-please) keeps a release pull request open with the next version and its CHANGELOG. Merging it runs `.github/workflows/release.yml`, which tags the release, runs CI at the tag, builds the Mac app for both architectures, signs it with the Developer ID, notarizes it, and attaches it to the GitHub release. The updater's `latest.json`, which installed copies read, goes up last, so a release that failed on the way never reaches them. The workflow reads the Developer ID and the updater's signing key from AWS Secrets Manager through GitHub's OIDC, as a role only main can assume (`infra/`, applied by hand).
 
 ## License
 
