@@ -174,6 +174,12 @@ mod e2e {
                 println!("skip {action}: not bound in this configuration");
                 continue;
             };
+            // Which action a cycling shortcut runs depends on the window's
+            // history in the app, which this check can't see.
+            if config.binding_for(&chord).is_some_and(|binding| binding.is_cycle()) {
+                println!("skip {action}: its shortcut cycles through several actions");
+                continue;
+            }
             let Some(mac) = chord.to_mac() else {
                 println!("skip {action}: {chord} has no key on a Mac keyboard");
                 continue;
