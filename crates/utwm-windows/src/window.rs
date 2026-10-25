@@ -43,6 +43,26 @@ fn handle(hwnd: HWND) -> Hwnd {
     hwnd as Hwnd
 }
 
+/// A window, told apart from a later window that reuses its handle: what the
+/// engine keeps history under.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Key {
+    pub window: Hwnd,
+    pid: u32,
+    started: u64,
+}
+
+impl Key {
+    pub fn of(hwnd: Hwnd) -> Self {
+        let pid = process_id(hwnd);
+        Self {
+            window: hwnd,
+            pid,
+            started: process_start_time(pid).unwrap_or(0),
+        }
+    }
+}
+
 /// Shell surfaces that are top-level windows but never targets.
 const SHELL_CLASSES: &[&str] = &[
     "Progman",
@@ -359,6 +379,11 @@ unsafe extern "system" fn collect(hwnd: HWND, data: LPARAM) -> BOOL {
     let all = unsafe { &mut *(data as *mut Vec<Hwnd>) };
     all.push(handle(hwnd));
     1
+}
+
+/// What `ignored_apps` names the window's app by: its executable's file name.
+pub fn app_id(hwnd: Hwnd) -> Option<String> {
+    exe_name(process_id(hwnd))
 }
 
 /// The executable's file name, e.g. `notepad.exe`.

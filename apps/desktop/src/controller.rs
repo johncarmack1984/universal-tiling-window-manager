@@ -1,9 +1,9 @@
 //! The worker that runs actions: it owns the per-window history and the
-//! keyboard hook, and is the only thread that moves windows.
+//! shortcut listener, and is the only thread that moves windows.
 //!
-//! Everything arrives as a [`Command`] on one channel — a binding from the hook,
-//! a tray menu click, a system event, a configuration change — so the order of
-//! events is the order they happened in and no state needs a lock.
+//! Everything arrives as a [`Command`] on one channel — a binding from the
+//! listener, a tray menu click, a system event, a configuration change — so the
+//! order of events is the order they happened in and no state needs a lock.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,26 +11,33 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use utwm_config::bindings::Resolved;
-use utwm_config::{ActionId, Target};
+use utwm_config::{ActionId, Chord, Target};
 use utwm_layout::{Engine, Move, PixelRect, Plan, Request, Screen, align};
-use utwm_windows::Hwnd;
-use utwm_windows::events::{Control, SystemEvent};
-use utwm_windows::hook::Hook;
-use utwm_windows::{monitors, window};
+#[cfg(windows)]
+use utwm_windows::events::SystemEvent;
 
+use crate::platform::{self, Control, Shortcuts, Window, monitors, window};
 use crate::tray;
 
 pub enum Command {
-    /// The hook matched binding `index` of the current configuration.
+    /// The listener matched binding `index` of the current configuration.
     Binding(usize),
     /// A tray menu item for one action or custom position.
     Menu(Target),
+    #[cfg(windows)]
     System(SystemEvent),
+    /// The command line's `quit`, `reload` or `pause`.
+    Control(Control),
     /// A configuration file changed, or a reload was asked for.
     Reload,
     TogglePause,
     ToggleAutostart,
     OpenConfigFolder,
+    /// Accessibility access came or went, or a Rectangle started or quit.
+    #[cfg(target_os = "macos")]
+    StatusChanged,
+    #[cfg(target_os = "macos")]
+    OpenAccessSettings,
     Quit,
 }
 
@@ -44,35 +51,25 @@ pub struct Shared {
     pub watched: Arc<Mutex<Vec<PathBuf>>>,
 }
 
-/// A window, told apart from a later window that reuses its handle.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct WindowKey {
-    hwnd: Hwnd,
-    pid: u32,
-    started: u64,
-}
-
-impl WindowKey {
-    fn of(hwnd: Hwnd) -> Self {
-        let pid = window::process_id(hwnd);
-        Self {
-            hwnd,
-            pid,
-            started: window::process_start_time(pid).unwrap_or(0),
-        }
-    }
-}
-
 pub struct Controller {
     shared: Arc<Shared>,
     config: Arc<Resolved>,
     /// Why the last load failed, while running on a fallback.
     load_error: Option<String>,
-    hook: Hook,
-    engine: Engine<WindowKey>,
+    shortcuts: Shortcuts,
+    /// Chords the system wouldn't register. The Mac refuses ones another app
+    /// already holds; the Windows hook takes every chord.
+    refused: Vec<Chord>,
+    engine: Engine<window::Key>,
+    /// Whether this run already asked macOS for Accessibility access, so a
+    /// shortcut pressed without it asks once rather than on every press.
+    #[cfg(target_os = "macos")]
+    asked_for_access: bool,
     /// The last application window in the foreground, for tray menu actions:
-    /// by the time a menu item is clicked the tray itself has the focus.
-    last_target: Option<Hwnd>,
+    /// by the time a menu item is clicked on Windows the tray itself has the
+    /// focus. The Mac's menu bar never takes it, so there the foreground
+    /// window is still the one meant.
+    last_target: Option<Window>,
 }
 
 impl Controller {
@@ -80,20 +77,42 @@ impl Controller {
         shared: Arc<Shared>,
         config: Arc<Resolved>,
         load_error: Option<String>,
-        hook: Hook,
+        shortcuts: Shortcuts,
+        refused: Vec<Chord>,
     ) -> Self {
         Self {
             shared,
             config,
             load_error,
-            hook,
+            shortcuts,
+            refused,
             engine: Engine::new(),
+            #[cfg(target_os = "macos")]
+            asked_for_access: false,
             last_target: window::foreground(),
         }
     }
 
-    pub fn status(&self) -> String {
-        tray::status_line(&self.config, self.load_error.as_deref())
+    pub fn status(&self) -> tray::Status {
+        #[cfg(target_os = "macos")]
+        {
+            if !utwm_macos::permission::is_granted() {
+                return tray::Status {
+                    text: "Needs Accessibility access: open System Settings…".to_owned(),
+                    opens_access_settings: true,
+                };
+            }
+            if let Some(name) = utwm_macos::conflicts::rectangle_running() {
+                return tray::Status::plain(format!(
+                    "{name} is running too and answers the same shortcuts; quit it"
+                ));
+            }
+        }
+        tray::Status::plain(tray::status_line(
+            &self.config,
+            self.load_error.as_deref(),
+            self.refused.len(),
+        ))
     }
 
     pub fn config(&self) -> &Arc<Resolved> {
@@ -105,26 +124,68 @@ impl Controller {
             match command {
                 Command::Binding(index) => self.binding(index),
                 Command::Menu(target) => {
-                    let hwnd = self
+                    let target_window = self
                         .last_target
-                        .filter(|hwnd| window::is_manageable(*hwnd))
+                        .filter(|candidate| window::is_manageable(*candidate))
                         .or_else(window::foreground);
-                    if let Some(hwnd) = hwnd {
-                        self.run_target(hwnd, target);
+                    if let Some(target_window) = target_window {
+                        self.run_target(target_window, target);
                     }
                 }
+                #[cfg(windows)]
                 Command::System(event) => self.system(event),
+                Command::Control(control) => self.control(control),
                 Command::Reload => self.reload(),
                 Command::TogglePause => self.toggle_pause(),
                 Command::ToggleAutostart => self.toggle_autostart(),
                 Command::OpenConfigFolder => self.open_config_folder(),
-                Command::Quit => {
-                    if let Some(app) = self.shared.app.get() {
-                        app.exit(0);
+                #[cfg(target_os = "macos")]
+                Command::StatusChanged => {
+                    // A Rectangle that held some shortcuts may have quit.
+                    if !self.refused.is_empty() {
+                        self.refused = self.shortcuts.set_bindings(self.chords());
                     }
+                    self.refresh_tray();
+                }
+                #[cfg(target_os = "macos")]
+                Command::OpenAccessSettings => self.ask_for_access(),
+                Command::Quit => {
+                    self.quit();
                     break;
                 }
             }
+        }
+    }
+
+    fn chords(&self) -> Vec<Chord> {
+        self.config
+            .bindings
+            .iter()
+            .map(|binding| binding.chord)
+            .collect()
+    }
+
+    fn quit(&self) {
+        if let Some(app) = self.shared.app.get() {
+            app.exit(0);
+        }
+    }
+
+    /// Shows macOS's prompt, which also lists this app in System Settings,
+    /// and opens the Accessibility pane where it is switched on.
+    #[cfg(target_os = "macos")]
+    fn ask_for_access(&mut self) {
+        self.asked_for_access = true;
+        if !utwm_macos::permission::request() {
+            utwm_macos::permission::open_settings();
+        }
+    }
+
+    fn control(&mut self, control: Control) {
+        match control {
+            Control::Quit => self.quit(),
+            Control::Reload => self.reload(),
+            Control::TogglePause => self.toggle_pause(),
         }
     }
 
@@ -133,64 +194,74 @@ impl Controller {
             return;
         };
         let targets: Vec<Target> = binding.targets().collect();
-        let chord = binding.chord;
+        let chord = tray::chord_label(binding.chord);
+        #[cfg(windows)]
         if window::full_screen_game_running() {
             tracing::debug!(%chord, "a full-screen game has the display; ignoring");
             return;
         }
-        let Some(hwnd) = window::foreground() else {
+        #[cfg(target_os = "macos")]
+        if !utwm_macos::permission::is_granted() {
+            tracing::warn!(%chord, "no Accessibility access yet, so no window can move");
+            if !self.asked_for_access {
+                self.ask_for_access();
+            }
+            return;
+        }
+        let Some(target_window) = window::foreground() else {
             tracing::debug!(%chord, "no window to act on");
             return;
         };
-        if let Some(exe) = self.ignored(hwnd) {
-            tracing::debug!(%chord, exe, "ignored app");
+        if let Some(app) = self.ignored(target_window) {
+            tracing::debug!(%chord, app, "ignored app");
             return;
         }
         let target = if targets.len() > 1 {
-            let Some(frame) = window::visible_frame(hwnd) else {
+            let Some(frame) = window::visible_frame(target_window) else {
                 return;
             };
-            let key = WindowKey::of(hwnd);
+            let key = window::Key::of(target_window);
             self.engine.select(&key, &targets, frame)
         } else {
             targets.first().copied()
         };
         if let Some(target) = target {
             tracing::debug!(%chord, ?target, "shortcut");
-            self.run_target(hwnd, target);
+            self.run_target(target_window, target);
         }
     }
 
-    /// The exe name, when the window's app is on the ignore list.
-    fn ignored(&self, hwnd: Hwnd) -> Option<String> {
+    /// The app's name for `ignored_apps` (an executable name on Windows, a
+    /// bundle id on the Mac), when it is on the ignore list.
+    fn ignored(&self, target_window: Window) -> Option<String> {
         if self.config.ignored_apps.is_empty() {
             return None;
         }
-        let exe = window::exe_name(window::process_id(hwnd))?;
+        let app = window::app_id(target_window)?;
         self.config
             .ignored_apps
             .iter()
-            .any(|ignored| ignored.eq_ignore_ascii_case(&exe))
-            .then_some(exe)
+            .any(|ignored| ignored.eq_ignore_ascii_case(&app))
+            .then_some(app)
     }
 
-    fn run_target(&mut self, hwnd: Hwnd, target: Target) {
+    fn run_target(&mut self, target_window: Window, target: Target) {
         let screens = monitors::screens();
         if let Target::Action(ActionId::Tile { rows, cols }) = target {
-            self.tile(hwnd, rows, cols, &screens);
+            self.tile(target_window, rows, cols, &screens);
             return;
         }
-        let Some(frame) = window::visible_frame(hwnd) else {
+        let Some(frame) = window::visible_frame(target_window) else {
             return;
         };
-        let key = WindowKey::of(hwnd);
+        let key = window::Key::of(target_window);
         let others: Vec<PixelRect> = if matches!(
             target,
             Target::Action(ActionId::FillLeft | ActionId::FillRight)
         ) {
             window::manageable_windows()
                 .into_iter()
-                .filter(|other| *other != hwnd)
+                .filter(|other| *other != target_window)
                 .filter_map(window::visible_frame)
                 .collect()
         } else {
@@ -207,7 +278,7 @@ impl Controller {
         };
         match self.engine.plan(&key, &request) {
             Plan::Move(planned) => {
-                if let Some(achieved) = self.apply(hwnd, &planned, &screens) {
+                if let Some(achieved) = self.apply(target_window, &planned, &screens) {
                     tracing::debug!(?target, from = %frame, to = %achieved, "moved");
                     self.engine.landed(&key, &planned, achieved);
                 }
@@ -219,13 +290,19 @@ impl Controller {
 
     /// Moves the window, then, if the app refused the size, places what it
     /// accepted against the edges the tile was meant to touch.
-    fn apply(&self, hwnd: Hwnd, planned: &Move, screens: &[Screen]) -> Option<PixelRect> {
+    fn apply(
+        &self,
+        target_window: Window,
+        planned: &Move,
+        screens: &[Screen],
+    ) -> Option<PixelRect> {
         let settings = &self.config.settings;
-        let fixed_size =
-            planned.resizes && !window::is_resizable(hwnd) && !window::is_maximized(hwnd);
+        let fixed_size = planned.resizes
+            && !window::is_resizable(target_window)
+            && !window::is_maximized(target_window);
         let result = if fixed_size {
             // A window that can't be resized keeps its size and moves only.
-            window::visible_frame(hwnd)
+            window::visible_frame(target_window)
                 .ok_or(window::PlaceError::Gone)
                 .and_then(|current| {
                     let aligned = align::realign(
@@ -237,57 +314,60 @@ impl Controller {
                         settings.move_fixed_size_to_edge,
                         planned.gap,
                     );
-                    window::move_to(hwnd, aligned.left, aligned.top)
+                    window::move_to(target_window, aligned.left, aligned.top)
                 })
         } else {
-            window::place(hwnd, planned.rect, planned.across_displays, screens).and_then(
-                |achieved| {
-                    let refused = (achieved.width() - planned.rect.width()).abs() > 1
-                        || (achieved.height() - planned.rect.height()).abs() > 1;
-                    if !refused {
-                        return Ok(achieved);
-                    }
-                    let aligned = align::realign(
-                        planned.rect,
-                        achieved.width(),
-                        achieved.height(),
-                        planned.initial,
-                        planned.screen_visible,
-                        settings.move_fixed_size_to_edge,
-                        planned.gap,
-                    );
-                    if (aligned.left, aligned.top) == (achieved.left, achieved.top) {
-                        Ok(achieved)
-                    } else {
-                        window::move_to(hwnd, aligned.left, aligned.top)
-                    }
-                },
+            window::place(
+                target_window,
+                planned.rect,
+                planned.across_displays,
+                screens,
             )
+            .and_then(|achieved| {
+                let refused = (achieved.width() - planned.rect.width()).abs() > 1
+                    || (achieved.height() - planned.rect.height()).abs() > 1;
+                if !refused {
+                    return Ok(achieved);
+                }
+                let aligned = align::realign(
+                    planned.rect,
+                    achieved.width(),
+                    achieved.height(),
+                    planned.initial,
+                    planned.screen_visible,
+                    settings.move_fixed_size_to_edge,
+                    planned.gap,
+                );
+                if (aligned.left, aligned.top) == (achieved.left, achieved.top) {
+                    Ok(achieved)
+                } else {
+                    window::move_to(target_window, aligned.left, aligned.top)
+                }
+            })
         };
         match result {
             Ok(achieved) => Some(achieved),
             Err(error) => {
-                let exe = window::exe_name(window::process_id(hwnd))
-                    .unwrap_or_else(|| "a window".to_owned());
-                tracing::warn!(%exe, %error, "could not move window");
-                self.notify(&format!("Couldn't move {exe}: {error}"));
+                let app = window::app_id(target_window).unwrap_or_else(|| "a window".to_owned());
+                tracing::warn!(%app, %error, "could not move window");
+                self.notify(&format!("Couldn't move {app}: {error}"));
                 None
             }
         }
     }
 
-    fn tile(&mut self, focused: Hwnd, rows: u8, cols: u8, screens: &[Screen]) {
+    fn tile(&mut self, focused: Window, rows: u8, cols: u8, screens: &[Screen]) {
         let mut order = vec![focused];
         order.extend(
             window::manageable_windows()
                 .into_iter()
-                .filter(|hwnd| *hwnd != focused),
+                .filter(|candidate| *candidate != focused),
         );
-        let windows: Vec<(WindowKey, PixelRect)> = order
+        let windows: Vec<(window::Key, PixelRect)> = order
             .into_iter()
-            .filter(|hwnd| self.ignored(*hwnd).is_none())
-            .filter_map(|hwnd| {
-                window::visible_frame(hwnd).map(|frame| (WindowKey::of(hwnd), frame))
+            .filter(|candidate| self.ignored(*candidate).is_none())
+            .filter_map(|candidate| {
+                window::visible_frame(candidate).map(|frame| (window::Key::of(candidate), frame))
             })
             .collect();
         let config = Arc::clone(&self.config);
@@ -295,15 +375,16 @@ impl Controller {
             .engine
             .plan_tile(rows, cols, &windows, screens, &config.settings)
         {
-            if let Err(error) = window::place(key.hwnd, rect, false, screens) {
+            if let Err(error) = window::place(key.window, rect, false, screens) {
                 tracing::warn!(%error, "could not tile a window");
             }
         }
     }
 
+    #[cfg(windows)]
     fn system(&mut self, event: SystemEvent) {
         match event {
-            SystemEvent::WindowDestroyed(hwnd) => self.engine.retain(|key| key.hwnd != hwnd),
+            SystemEvent::WindowDestroyed(hwnd) => self.engine.retain(|key| key.window != hwnd),
             SystemEvent::Foreground(hwnd) => {
                 if window::is_manageable(hwnd) {
                     self.last_target = Some(hwnd);
@@ -311,16 +392,10 @@ impl Controller {
             }
             SystemEvent::SessionUnlocked | SystemEvent::Resumed => {
                 tracing::info!("re-installing the keyboard hook");
-                self.hook.reinstall();
+                self.shortcuts.reinstall();
             }
             SystemEvent::DisplaysChanged => {}
-            SystemEvent::Control(Control::Quit) => {
-                if let Some(app) = self.shared.app.get() {
-                    app.exit(0);
-                }
-            }
-            SystemEvent::Control(Control::Reload) => self.reload(),
-            SystemEvent::Control(Control::TogglePause) => self.toggle_pause(),
+            SystemEvent::Control(control) => self.control(control),
         }
     }
 
@@ -351,15 +426,14 @@ impl Controller {
                 for warning in &resolved.warnings {
                     tracing::warn!("{warning}");
                 }
-                self.hook.set_bindings(
-                    resolved
-                        .bindings
-                        .iter()
-                        .map(|binding| binding.chord)
-                        .collect(),
-                );
                 self.config = Arc::new(resolved);
                 self.load_error = None;
+                #[cfg(windows)]
+                self.shortcuts.set_bindings(self.chords());
+                #[cfg(target_os = "macos")]
+                {
+                    self.refused = self.shortcuts.set_bindings(self.chords());
+                }
                 // History holds actions by name; a new export can't invalidate it.
             }
             Err(error) => {
@@ -374,15 +448,15 @@ impl Controller {
     fn toggle_pause(&mut self) {
         let paused = !self.shared.paused.load(Ordering::SeqCst);
         self.shared.paused.store(paused, Ordering::SeqCst);
-        self.hook.set_paused(paused);
+        self.shortcuts.set_paused(paused);
         tracing::info!(paused, "shortcuts");
         self.refresh_tray();
     }
 
     fn toggle_autostart(&mut self) {
-        let enable = !utwm_windows::autostart::is_enabled();
-        let result = std::env::current_exe()
-            .and_then(|exe| utwm_windows::autostart::set_enabled(enable, &exe));
+        let enable = !platform::autostart::is_enabled();
+        let result =
+            std::env::current_exe().and_then(|exe| platform::autostart::set_enabled(enable, &exe));
         if let Err(error) = result {
             tracing::warn!(%error, "could not change start at login");
             self.notify(&format!("Couldn't change Start at login: {error}"));
@@ -399,10 +473,7 @@ impl Controller {
             .and_then(|path| path.parent().map(PathBuf::from))
             .unwrap_or_else(|| self.shared.home.join(".config").join("rectangle-pro"));
         let _ = std::fs::create_dir_all(&folder);
-        if let Err(error) = std::process::Command::new("explorer.exe")
-            .arg(&folder)
-            .spawn()
-        {
+        if let Err(error) = platform::open_folder(&folder) {
             tracing::warn!(%error, "could not open the configuration folder");
         }
     }
@@ -425,6 +496,7 @@ impl Controller {
 }
 
 /// Forwards hook events into the controller's channel.
+#[cfg(windows)]
 pub fn hook_reporter(sender: Sender<Command>) -> utwm_windows::hook::Reporter {
     Box::new(move |event| {
         if let utwm_windows::hook::HookEvent::Triggered(index) = event {
@@ -433,9 +505,31 @@ pub fn hook_reporter(sender: Sender<Command>) -> utwm_windows::hook::Reporter {
     })
 }
 
-/// Forwards system events into the controller's channel.
+/// Forwards system events into the controller's channel, the command line's
+/// requests as the same [`Command::Control`] the Mac sends.
+#[cfg(windows)]
 pub fn events_reporter(sender: Sender<Command>) -> utwm_windows::events::Reporter {
     Box::new(move |event| {
-        let _ = sender.send(Command::System(event));
+        let command = match event {
+            SystemEvent::Control(control) => Command::Control(control),
+            other => Command::System(other),
+        };
+        let _ = sender.send(command);
+    })
+}
+
+/// Forwards hot key presses into the controller's channel.
+#[cfg(target_os = "macos")]
+pub fn hotkeys_reporter(sender: Sender<Command>) -> utwm_macos::hotkeys::Reporter {
+    Box::new(move |index| {
+        let _ = sender.send(Command::Binding(index));
+    })
+}
+
+/// Forwards the command line's requests into the controller's channel.
+#[cfg(target_os = "macos")]
+pub fn control_reporter(sender: Sender<Command>) -> utwm_macos::control::Reporter {
+    Box::new(move |control| {
+        let _ = sender.send(Command::Control(control));
     })
 }
