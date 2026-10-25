@@ -37,7 +37,11 @@ resource "aws_iam_role" "release_signing" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           # Main only, never repo:…:*: the updater key signs what installed
           # copies install, so no branch or pull request run may read it.
-          "token.actions.githubusercontent.com:sub" = "repo:johncarmack1984/universal-tiling-window-manager:ref:refs/heads/main"
+          # The owner and repo IDs are GitHub's immutable subject, fixed on
+          # for repos created after 2026-07-15 (lux predates it, so its role
+          # names the repo alone); the repo's Settings → Actions → OIDC page
+          # shows the prefix.
+          "token.actions.githubusercontent.com:sub" = "repo:johncarmack1984@20649979/universal-tiling-window-manager@1432647467:ref:refs/heads/main"
         }
       }
     }]
