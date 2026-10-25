@@ -73,12 +73,14 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     println!("built {}", app.display());
 
     if install {
-        let installed = install_app(&app, &names, identity.is_none())?;
+        let (installed, reset) = install_app(&app, &names, identity.is_none())?;
         println!("installed {} and started it", installed.display());
-        if identity.is_none() {
+        if reset {
             println!(
-                "signed ad hoc, so macOS asks for Accessibility access again after each install; set UTWM_SIGN_IDENTITY to a code-signing certificate to keep it"
+                "signed ad hoc and changed since the last install, so macOS asks for Accessibility access again; set UTWM_SIGN_IDENTITY to a code-signing certificate to keep it"
             );
+        } else if identity.is_none() {
+            println!("unchanged since the last install, so its Accessibility access carries over");
         }
         println!(
             "the command line is {}",
@@ -120,8 +122,9 @@ fn sign(app: &Path, identifier: &str, identity: Option<&str>) -> Result<()> {
 }
 
 /// Replaces the copy in /Applications with `app`, quitting a running copy
-/// first, and starts it.
-fn install_app(app: &Path, names: &Names, ad_hoc: bool) -> Result<PathBuf> {
+/// first, and starts it. Returns where it went and whether the Accessibility
+/// grant was cleared.
+fn install_app(app: &Path, names: &Names, ad_hoc: bool) -> Result<(PathBuf, bool)> {
     if control::send_control(Control::Quit) {
         let deadline = Instant::now() + Duration::from_secs(10);
         while control::is_running() {
@@ -132,12 +135,15 @@ fn install_app(app: &Path, names: &Names, ad_hoc: bool) -> Result<PathBuf> {
         }
     }
     let installed = Path::new(APPLICATIONS).join(format!("{}.app", names.product_name));
+    // An unchanged build signs to the same hash, so the grant still fits it.
+    let unchanged = cdhash(&installed).is_some_and(|old| Some(old) == cdhash(app));
     if installed.exists() {
         std::fs::remove_dir_all(&installed)?;
     }
     // ditto copies a bundle the way Finder does, signature and all.
     run_tool(Command::new("ditto").arg(app).arg(&installed))?;
-    if ad_hoc {
+    let reset = ad_hoc && !unchanged;
+    if reset {
         // The old build's grant names a signature this build doesn't have, so
         // its switch in System Settings would stay on and do nothing. Clearing
         // it lets the app ask afresh.
@@ -146,7 +152,21 @@ fn install_app(app: &Path, names: &Names, ad_hoc: bool) -> Result<PathBuf> {
             .output();
     }
     run_tool(Command::new("open").arg(&installed))?;
-    Ok(installed)
+    Ok((installed, reset))
+}
+
+/// The hash a signature identifies the code by, which is what macOS keeps a
+/// grant to an ad-hoc signed app under. `None` when there is no app there.
+fn cdhash(app: &Path) -> Option<String> {
+    let output = Command::new("codesign")
+        .args(["--display", "--verbose=4"])
+        .arg(app)
+        .output()
+        .ok()?;
+    // codesign writes what it displays to standard error.
+    String::from_utf8_lossy(&output.stderr)
+        .lines()
+        .find_map(|line| line.strip_prefix("CDHash=").map(str::to_owned))
 }
 
 fn run_tool(command: &mut Command) -> Result<()> {
