@@ -104,10 +104,12 @@ jobs:
             fi
             exit 0
           fi
-          # The version's CHANGELOG section becomes the release notes.
+          # The version's CHANGELOG section becomes the release notes. Its
+          # heading links a comparison with the release before, except for
+          # the first release, which has none to compare with.
           notes=$(awk -v ver="$version" '
-            index($0, "## [" ver "]") == 1 { grab = 1; next }
-            grab && index($0, "## [") == 1 { exit }
+            index($0, "## [" ver "]") == 1 || index($0, "## " ver " ") == 1 { grab = 1; next }
+            grab && index($0, "## ") == 1 { exit }
             grab { print }
           ' CHANGELOG.md)
           gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes "${notes:-$tag}"
