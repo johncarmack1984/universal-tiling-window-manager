@@ -3,7 +3,7 @@
 //! from Rectangle's formulas by hand, so a regression in the port shows up as a
 //! pixel diff here.
 
-use utwm_config::settings::Settings;
+use utwm_config::settings::{RepeatMode, Settings};
 use utwm_config::{ActionId, Anchor, Dimension, ManualSpec, Placement, Target};
 use utwm_layout::{Engine, Move, PixelRect, Plan, Request, Screen};
 
@@ -19,7 +19,9 @@ fn screen() -> Screen {
     }
 }
 
-/// John's export: cycle sizes ½ → ⅔ → ⅓, no gaps, 10% minimum sizes.
+/// John's export's sizes and gaps (cycle sizes ½ → ⅔ → ⅓, no gaps, 10%
+/// minimum sizes) with Rectangle's own repeat, which cycles those sizes; the
+/// Rectangle Pro repeat his export asks for has tests of its own below.
 fn settings() -> Settings {
     Settings {
         minimum_window_width: 0.1,
@@ -276,6 +278,82 @@ fn restore_returns_to_the_position_before_snapping() {
     w.press(ActionId::LeftHalf);
     w.press(ActionId::LeftHalf);
     assert_eq!(w.press(ActionId::Restore), START);
+}
+
+/// Rectangle Pro's repeat, on displays laid out by `screens`.
+fn directional(start: PixelRect, screens: &[Screen]) -> Window {
+    let mut w = Window::new(start);
+    w.settings.repeat_mode = RepeatMode::Directional;
+    w.screens = screens.to_vec();
+    w
+}
+
+fn display(frame: PixelRect, work: PixelRect) -> Screen {
+    Screen {
+        frame,
+        work,
+        scale: 1.0,
+        primary: frame.left == 0 && frame.top == 0,
+    }
+}
+
+#[test]
+fn a_repeated_half_moves_on_to_the_display_that_way() {
+    let left = screen();
+    let right = display(rect(1920, 0, 3840, 1080), rect(1920, 0, 3840, 1032));
+    let mut w = directional(START, &[left, right]);
+    // The leftmost display: a left half, then nowhere further to go.
+    assert_eq!(w.press(ActionId::LeftHalf), rect(0, 0, 960, 1032));
+    assert_eq!(w.press(ActionId::LeftHalf), rect(0, 0, 960, 1032));
+    // Right: the right half, the left half of the display to the right, its
+    // right half, and then the edge.
+    assert_eq!(w.press(ActionId::RightHalf), rect(960, 0, 1920, 1032));
+    assert_eq!(w.press(ActionId::RightHalf), rect(1920, 0, 2880, 1032));
+    assert_eq!(w.press(ActionId::RightHalf), rect(2880, 0, 3840, 1032));
+    assert_eq!(w.press(ActionId::RightHalf), rect(2880, 0, 3840, 1032));
+    // And back: this display's left half, the right half of the display to
+    // the left, then its left half.
+    assert_eq!(w.press(ActionId::LeftHalf), rect(1920, 0, 2880, 1032));
+    assert_eq!(w.press(ActionId::LeftHalf), rect(960, 0, 1920, 1032));
+    assert_eq!(w.press(ActionId::LeftHalf), rect(0, 0, 960, 1032));
+}
+
+#[test]
+fn up_and_down_go_to_the_display_above_and_below() {
+    let main = screen();
+    let above = display(rect(0, -1440, 2560, 0), rect(0, -1440, 2560, 0));
+    let mut w = directional(START, &[main, above]);
+    assert_eq!(w.press(ActionId::TopHalf), rect(0, 0, 1920, 516));
+    // The bottom half of the display above, then its top half, then the edge.
+    assert_eq!(w.press(ActionId::TopHalf), rect(0, -720, 2560, 0));
+    assert_eq!(w.press(ActionId::TopHalf), rect(0, -1440, 2560, -720));
+    assert_eq!(w.press(ActionId::TopHalf), rect(0, -1440, 2560, -720));
+    assert_eq!(w.press(ActionId::BottomHalf), rect(0, -720, 2560, 0));
+    assert_eq!(w.press(ActionId::BottomHalf), rect(0, 0, 1920, 516));
+    assert_eq!(w.press(ActionId::BottomHalf), rect(0, 516, 1920, 1032));
+}
+
+#[test]
+fn johns_desk_moves_left_and_right_but_not_up_or_down() {
+    // The laptop, and the 4K display to its right, raised by 669 points.
+    let laptop = display(rect(0, 0, 2056, 1329), rect(0, 39, 2056, 1329));
+    let wide = display(rect(2056, -669, 5896, 1491), rect(2056, -639, 5896, 1491));
+    let mut w = directional(START, &[laptop, wide]);
+    assert_eq!(w.press(ActionId::RightHalf), rect(1028, 39, 2056, 1329));
+    assert_eq!(w.press(ActionId::RightHalf), rect(2056, -639, 3976, 1491));
+    assert_eq!(w.press(ActionId::TopHalf), rect(2056, -639, 5896, 426));
+    assert_eq!(w.press(ActionId::TopHalf), rect(2056, -639, 5896, 426));
+    assert_eq!(w.press(ActionId::LeftHalf), rect(2056, -639, 3976, 1491));
+    assert_eq!(w.press(ActionId::LeftHalf), rect(1028, 39, 2056, 1329));
+}
+
+#[test]
+fn on_one_display_a_repeated_half_stays_put() {
+    let mut w = directional(START, &[screen()]);
+    assert_eq!(w.press(ActionId::LeftHalf), rect(0, 0, 960, 1032));
+    assert_eq!(w.press(ActionId::LeftHalf), rect(0, 0, 960, 1032));
+    assert_eq!(w.press(ActionId::BottomHalf), rect(0, 516, 1920, 1032));
+    assert_eq!(w.press(ActionId::BottomHalf), rect(0, 516, 1920, 1032));
 }
 
 #[test]

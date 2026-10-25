@@ -180,15 +180,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         press(hwnd, "Left"),
         PixelRect::new(0, 0, 960, 1032),
     );
+    // Rectangle Pro's repeat moves a half on to the next display that way;
+    // with one display there is none, so the window stays.
     report.check(
-        "…again: two thirds",
+        "…again: no display to the left",
         press(hwnd, "Left"),
-        PixelRect::new(0, 0, 1280, 1032),
-    );
-    report.check(
-        "…again: one third",
-        press(hwnd, "Left"),
-        PixelRect::new(0, 0, 640, 1032),
+        PixelRect::new(0, 0, 960, 1032),
     );
     report.check(
         "Ctrl+Alt+Right",
