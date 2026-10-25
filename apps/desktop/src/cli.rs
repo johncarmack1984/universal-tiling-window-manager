@@ -14,7 +14,7 @@ commands:
   reload                make the running instance re-read its configuration
   pause                 pause or resume the running instance's shortcuts
   quit                  stop the running instance
-  update                make the running instance install the latest release (Mac)
+  update                make the running instance install the newest release
   version               print the version
 
 The export is looked for in ~/.config/rectangle-pro/RectangleProConfig.json,
@@ -123,15 +123,8 @@ pub fn run(invocation: Invocation) -> ExitCode {
         Command::Pause => control(crate::platform::Control::TogglePause),
         #[cfg(any(windows, target_os = "macos"))]
         Command::Quit => control(crate::platform::Control::Quit),
-        #[cfg(target_os = "macos")]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Update => control(crate::platform::Control::Update),
-        #[cfg(not(target_os = "macos"))]
-        Command::Update => {
-            print_to_terminal(
-                "update is for the Mac, which installs releases; on Windows, `just install` builds and installs from source.",
-            );
-            ExitCode::FAILURE
-        }
         #[cfg(any(windows, target_os = "macos"))]
         Command::Run => match crate::app::run(invocation.config) {
             Ok(()) => ExitCode::SUCCESS,

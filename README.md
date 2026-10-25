@@ -8,16 +8,18 @@ On the Mac it runs in Rectangle Pro's place. It lives in the tray on Windows and
 
 ## Install
 
-On Windows:
+On Windows, download `Window-Manager_<version>_x64-setup.exe` from the [latest release](https://github.com/johncarmack1984/universal-tiling-window-manager/releases/latest) and run it. It installs for your user only, with no administrator prompt, into `%LOCALAPPDATA%\Window Manager`, and offers to start the app in the tray when it finishes. The installer isn't code-signed, so SmartScreen questions it the first time: **More info**, then **Run anyway**. To have it start with Windows, tick **Start at login** in its tray menu, which adds it to your user's startup apps (Task Manager lists it there too). It is developed and tested on Windows 11 x64.
+
+It keeps itself up to date as the Mac app does (below), except that a newer release's installer does the replacing: it runs on its own, showing only a progress bar, and starts the app again. The command line is the installed executable, `& "$env:LOCALAPPDATA\Window Manager\universal-tiling-window-manager.exe" check`; putting that folder on your PATH shortens it to `universal-tiling-window-manager check`.
+
+To build it from source instead:
 
 ```powershell
 cargo install --locked --git https://github.com/johncarmack1984/universal-tiling-window-manager universal-tiling-window-manager
 universal-tiling-window-manager
 ```
 
-The second line starts it in the tray. To have it start with Windows, tick **Start at login** in its tray menu, which adds it to your user's startup apps (Task Manager lists it there too). Building needs Rust 1.95 or newer and the MSVC build tools. It is developed and tested on Windows 11 x64.
-
-To update, stop the running copy first, since Windows won't replace a running executable: `universal-tiling-window-manager quit`, then the `cargo install` line again with `--force`.
+The second line starts it in the tray. Building needs Rust 1.95 or newer and the MSVC build tools. A copy built this way doesn't update itself, since it isn't where the installer would put one. To update it, stop the running copy first, since Windows won't replace a running executable: `universal-tiling-window-manager quit`, then the `cargo install` line again with `--force`. To move from it to the installer, untick **Start at login** in its menu, quit it, and `cargo uninstall universal-tiling-window-manager` first.
 
 On the Mac it is an app, Window Manager. Download `Window-Manager_<version>_universal.zip` from the [latest release](https://github.com/johncarmack1984/universal-tiling-window-manager/releases/latest), open it, drag Window Manager into /Applications, and open it from there; from then on it opens from Finder or Spotlight like any other app. It is signed with a Developer ID and notarized, and runs on Apple silicon and Intel Macs with macOS 13 or newer.
 
@@ -186,7 +188,7 @@ On the Mac it posts the configured shortcuts as key events and checks that each 
 
 ### Releases
 
-Commits follow [Conventional Commits](https://www.conventionalcommits.org): `feat:` and `fix:` are what a release is made of, and pull requests are squash-merged, so a pull request's title is its commit. [release-please](https://github.com/googleapis/release-please) keeps a release pull request open with the next version and its CHANGELOG. Merging it runs `.github/workflows/release.yml`, which tags the release, runs CI at the tag, builds the Mac app for both architectures, signs it with the Developer ID, notarizes it, and attaches it to the GitHub release. The updater's `latest.json`, which installed copies read, goes up last, so a release that failed on the way never reaches them. The workflow reads the Developer ID and the updater's signing key from AWS Secrets Manager through GitHub's OIDC, as a role only main can assume (`infra/`, applied by hand).
+Commits follow [Conventional Commits](https://www.conventionalcommits.org): `feat:` and `fix:` are what a release is made of, and pull requests are squash-merged, so a pull request's title is its commit. [release-please](https://github.com/googleapis/release-please) keeps a release pull request open with the next version and its CHANGELOG. Merging it runs `.github/workflows/release.yml`, which tags the release, runs CI at the tag, builds the Mac app for both architectures, signs it with the Developer ID and notarizes it, builds the Windows installer, and attaches both to the GitHub release. The updater's `latest.json`, which installed copies read, goes up last, so a release that failed on the way never reaches them. The workflow reads the Developer ID and the updater's signing key from AWS Secrets Manager through GitHub's OIDC, as a role only main can assume (`infra/`, applied by hand).
 
 ## License
 

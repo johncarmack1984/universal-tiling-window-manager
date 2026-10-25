@@ -17,9 +17,7 @@ use utwm_layout::{Engine, Move, PixelRect, Plan, Request, Screen, align};
 use utwm_windows::events::SystemEvent;
 
 use crate::platform::{self, Control, Shortcuts, Window, monitors, window};
-use crate::tray;
-#[cfg(target_os = "macos")]
-use crate::updates;
+use crate::{tray, updates};
 
 pub enum Command {
     /// The listener matched binding `index` of the current configuration.
@@ -41,10 +39,8 @@ pub enum Command {
     #[cfg(target_os = "macos")]
     OpenAccessSettings,
     /// The menu asked for an update check.
-    #[cfg(target_os = "macos")]
     CheckForUpdates,
     /// What the update thread is doing, for the menu.
-    #[cfg(target_os = "macos")]
     Updates(updates::State),
     Quit,
 }
@@ -73,10 +69,9 @@ pub struct Controller {
     /// shortcut pressed without it asks once rather than on every press.
     #[cfg(target_os = "macos")]
     asked_for_access: bool,
-    /// The update thread, when this copy runs from an app bundle.
-    #[cfg(target_os = "macos")]
+    /// The update thread, when this copy was installed the way a release
+    /// installs.
     updates: Option<updates::Updates>,
-    #[cfg(target_os = "macos")]
     update_state: updates::State,
     /// The last application window in the foreground, for tray menu actions:
     /// by the time a menu item is clicked on Windows the tray itself has the
@@ -92,6 +87,7 @@ impl Controller {
         load_error: Option<String>,
         shortcuts: Shortcuts,
         refused: Vec<Chord>,
+        updates: Option<updates::Updates>,
     ) -> Self {
         Self {
             shared,
@@ -102,9 +98,7 @@ impl Controller {
             engine: Engine::new(),
             #[cfg(target_os = "macos")]
             asked_for_access: false,
-            #[cfg(target_os = "macos")]
-            updates: None,
-            #[cfg(target_os = "macos")]
+            updates,
             update_state: updates::State::Idle,
             last_target: if cfg!(windows) {
                 window::foreground()
@@ -140,20 +134,12 @@ impl Controller {
         &self.config
     }
 
-    #[cfg(target_os = "macos")]
-    pub fn with_updates(mut self, updates: Option<updates::Updates>) -> Self {
-        self.updates = updates;
-        self
-    }
-
     /// The menu's updates line, on a copy that updates itself.
     pub fn updates_line(&self) -> Option<tray::UpdatesLine> {
-        #[cfg(target_os = "macos")]
-        if self.updates.is_some() {
+        self.updates.as_ref().map(|_| {
             let (text, enabled) = self.update_state.menu_line();
-            return Some(tray::UpdatesLine { text, enabled });
-        }
-        None
+            tray::UpdatesLine { text, enabled }
+        })
     }
 
     pub fn run(mut self, commands: Receiver<Command>) {
@@ -186,9 +172,7 @@ impl Controller {
                 }
                 #[cfg(target_os = "macos")]
                 Command::OpenAccessSettings => self.ask_for_access(),
-                #[cfg(target_os = "macos")]
                 Command::CheckForUpdates => self.check_for_updates(),
-                #[cfg(target_os = "macos")]
                 Command::Updates(state) => {
                     self.update_state = state;
                     self.refresh_tray();
@@ -230,17 +214,15 @@ impl Controller {
             Control::Quit => self.quit(),
             Control::Reload => self.reload(),
             Control::TogglePause => self.toggle_pause(),
-            #[cfg(target_os = "macos")]
             Control::Update => self.check_for_updates(),
         }
     }
 
-    #[cfg(target_os = "macos")]
     fn check_for_updates(&self) {
         match &self.updates {
             Some(updates) => updates.check_now(),
             None => {
-                tracing::info!("this copy doesn't run from an app bundle, so it doesn't update")
+                tracing::info!("this copy wasn't installed from a release, so it doesn't update")
             }
         }
     }

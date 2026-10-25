@@ -159,7 +159,6 @@ fn command_for(id: &str) -> Option<Command> {
         "autostart" => Some(Command::ToggleAutostart),
         #[cfg(target_os = "macos")]
         "access" => Some(Command::OpenAccessSettings),
-        #[cfg(target_os = "macos")]
         "update" => Some(Command::CheckForUpdates),
         "quit" => Some(Command::Quit),
         _ => None,

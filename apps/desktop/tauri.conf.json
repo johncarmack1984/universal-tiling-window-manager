@@ -15,7 +15,10 @@
         "https://github.com/johncarmack1984/universal-tiling-window-manager/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZEQkE2NEQzRDQxRjBGODYKUldTR0R4L1UwMlM2L1NzbUlXb2lIRWx3ZlpCd3JzS2xuK2o2Q3I5UmRaUGxCc21UTUJ0ckZBUjIK",
-      "requireSignedVersion": true
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
     }
   },
   "bundle": {

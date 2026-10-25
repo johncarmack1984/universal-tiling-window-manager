@@ -30,7 +30,8 @@ pub enum SystemEvent {
     SessionUnlocked,
     Resumed,
     DisplaysChanged,
-    /// Another process (the `quit`, `reload` and `pause` commands) asked for this.
+    /// Another process (the `quit`, `reload`, `pause` and `update` commands)
+    /// asked for this.
     Control(Control),
 }
 
@@ -40,6 +41,8 @@ pub enum Control {
     Quit,
     Reload,
     TogglePause,
+    /// Check for an update now, and install it.
+    Update,
 }
 
 impl Control {
@@ -48,11 +51,12 @@ impl Control {
             Self::Quit => WM_APP + 10,
             Self::Reload => WM_APP + 11,
             Self::TogglePause => WM_APP + 12,
+            Self::Update => WM_APP + 13,
         }
     }
 
     fn from_message(message: u32) -> Option<Self> {
-        [Self::Quit, Self::Reload, Self::TogglePause]
+        [Self::Quit, Self::Reload, Self::TogglePause, Self::Update]
             .into_iter()
             .find(|control| control.message() == message)
     }

@@ -35,8 +35,11 @@ utwm-windows.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 utwm-macos.workspace = true
-# Installs releases (src/updates.rs). native-tls is the Mac's own TLS, so no
-# TLS library of the plugin's choosing comes along.
+
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+# Installs releases (src/updates.rs). native-tls is the system's own TLS
+# (Schannel on Windows, Security.framework on the Mac), so no TLS library of
+# the plugin's choosing comes along.
 tauri-plugin-updater = { version = "=3.0.0-alpha.3", default-features = false, features = ["native-tls"] }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]

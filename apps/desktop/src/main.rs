@@ -24,7 +24,7 @@ mod platform;
 mod poll;
 #[cfg(any(windows, target_os = "macos"))]
 mod tray;
-#[cfg(target_os = "macos")]
+#[cfg(any(windows, target_os = "macos"))]
 mod updates;
 
 use std::process::ExitCode;

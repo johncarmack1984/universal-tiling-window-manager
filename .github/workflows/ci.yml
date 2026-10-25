@@ -3,7 +3,8 @@ name: ci
 # The pure crates (export parsing, key translation, Rectangle's geometry) build
 # and test anywhere, so they gate on Linux, where runners are fastest. The Win32
 # and macOS crates and the Tauri app build on their own platforms; those jobs
-# also make the release build `cargo install --git` would make, so a broken
+# also make the release build `cargo install --git` would make, and what a
+# release ships (the Windows installer, the Mac app bundle), so a broken
 # install fails here first.
 #
 # The end-to-end checks (tools/e2e) need a running app, a real desktop and, on
@@ -78,6 +79,9 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $out -notmatch 'Bindings \(22 chords\)') {
             throw "check did not report Rectangle's 22 default shortcuts"
           }
+      - name: installer (what a release ships)
+        working-directory: apps/desktop
+        run: npx --yes @tauri-apps/cli@3.0.0-alpha.5 build --bundles nsis --ci
 
   macos:
     runs-on: macos-latest

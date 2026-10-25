@@ -1,15 +1,20 @@
-//! Updates on the Mac. Every GitHub release carries the signed app and a
-//! `latest.json` describing it; this reads that a minute after launch, every
-//! six hours after, and whenever the menu or the command line (`update`) asks.
-//! A newer release is downloaded, its signature checked against the public
-//! key in tauri.conf.json, put in place of the bundle this copy runs from, and
-//! started once this copy has quit.
+//! Updates. Every GitHub release carries the signed app for each platform and
+//! a `latest.json` describing them; this reads that a minute after launch,
+//! every six hours after, and whenever the menu or the command line (`update`)
+//! asks. A newer release is downloaded and its signature checked against the
+//! public key in tauri.conf.json. On the Mac it then replaces the bundle this
+//! copy runs from and starts once this copy has quit; on Windows the release's
+//! installer runs in its passive mode, a progress bar with nothing to click,
+//! and starts the app again itself.
 //!
-//! Only a copy running from an app bundle updates itself. The updater replaces
-//! whatever holds `Contents/MacOS`, and for `cargo run` it would take the
-//! build directory instead.
+//! Only a copy installed the way a release installs updates itself. On the
+//! Mac that is a copy running from an app bundle: the updater replaces
+//! whatever holds `Contents/MacOS`, which for `cargo run` would be the build
+//! directory. On Windows it is a copy the installer put in place: one from
+//! `cargo install` would get a second copy beside it, with Start at login
+//! still naming the first.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
@@ -72,26 +77,18 @@ pub fn start(
             return None;
         }
     };
-    let Some(bundle) = bundle_of(&executable).map(Path::to_path_buf) else {
-        tracing::info!(executable = %executable.display(), "not running from an app bundle; updates are off");
-        return None;
+    let installed = match installed_copy(&executable) {
+        Ok(installed) => installed,
+        Err(why) => {
+            tracing::info!(executable = %executable.display(), "{why}; updates are off");
+            return None;
+        }
     };
-    // A quarantined app opened where it was downloaded runs from a read-only
-    // copy macOS makes, which can't be replaced.
-    if bundle
-        .components()
-        .any(|part| part.as_os_str() == "AppTranslocation")
-    {
-        tracing::warn!(
-            bundle = %bundle.display(),
-            "running from macOS's read-only copy of a downloaded app; move it to /Applications to get updates"
-        );
-        return None;
-    }
+    tracing::info!(installed = %installed.display(), "updates are on");
     let (requests, received) = std::sync::mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("updates".to_owned())
-        .spawn(move || run(&app, &executable, &bundle, &received, &report, &shared));
+        .spawn(move || run(&app, &executable, &installed, &received, &report, &shared));
     match spawned {
         Ok(_) => Some(Updates(requests)),
         Err(error) => {
@@ -101,7 +98,42 @@ pub fn start(
     }
 }
 
+/// What a release replaces, when this copy updates itself: on the Mac, the
+/// bundle it runs from.
+#[cfg(target_os = "macos")]
+fn installed_copy(executable: &Path) -> Result<PathBuf, &'static str> {
+    let bundle = bundle_of(executable).ok_or("not running from an app bundle")?;
+    // A quarantined app opened where it was downloaded runs from a read-only
+    // copy macOS makes, which can't be replaced.
+    if bundle
+        .components()
+        .any(|part| part.as_os_str() == "AppTranslocation")
+    {
+        return Err(
+            "running from macOS's read-only copy of a downloaded app; move it to /Applications",
+        );
+    }
+    Ok(bundle.to_path_buf())
+}
+
+/// What a release replaces, when this copy updates itself: on Windows, the
+/// folder the installer put it in. The installer marks the executable it
+/// installs, which a `cargo install` build doesn't carry.
+#[cfg(windows)]
+fn installed_copy(executable: &Path) -> Result<PathBuf, &'static str> {
+    use tauri::utils::{config::BundleType, platform::bundle_type};
+
+    if bundle_type() != Some(BundleType::Nsis) {
+        return Err("not installed by the installer");
+    }
+    executable
+        .parent()
+        .map(Path::to_path_buf)
+        .ok_or("no folder above the executable")
+}
+
 /// The bundle holding `executable`, which is `X.app/Contents/MacOS/<name>`.
+#[cfg(target_os = "macos")]
 fn bundle_of(executable: &Path) -> Option<&Path> {
     let macos = executable.parent()?;
     let contents = macos.parent()?;
@@ -115,7 +147,7 @@ fn bundle_of(executable: &Path) -> Option<&Path> {
 fn run(
     app: &tauri::AppHandle,
     executable: &Path,
-    bundle: &Path,
+    installed: &Path,
     requests: &Receiver<()>,
     report: &Sender<Command>,
     shared: &Shared,
@@ -139,7 +171,7 @@ fn run(
         let state = match outcome {
             Ok(Some(version)) => {
                 tracing::info!(version, "update installed; restarting");
-                if relaunch_after_exit(bundle) {
+                if restart_after_exit(installed) {
                     let _ = report.send(Command::Quit);
                     return;
                 }
@@ -158,14 +190,23 @@ fn run(
     }
 }
 
-/// Installs the latest release over `executable`'s bundle when it is newer
-/// than this copy. Returns the version installed.
+/// Installs the latest release in place of this copy when it is newer.
+/// Returns the version installed.
 async fn install_newer(
     app: &tauri::AppHandle,
     executable: &Path,
     report: &Sender<Command>,
 ) -> tauri_plugin_updater::Result<Option<String>> {
-    let updater = app.updater_builder().executable_path(executable).build()?;
+    let builder = app.updater_builder().executable_path(executable);
+    // On Windows the plugin ends this process as soon as the installer
+    // starts. The tray icon goes first, or Windows leaves it in the tray
+    // until the pointer passes over it.
+    #[cfg(windows)]
+    let builder = {
+        let app = app.clone();
+        builder.on_before_exit(move || app.cleanup_before_exit())
+    };
+    let updater = builder.build()?;
     let Some(update) = updater.check().await? else {
         return Ok(None);
     };
@@ -178,7 +219,8 @@ async fn install_newer(
 /// Opens `bundle` again once this process has exited: a new copy can't start
 /// while this one holds the single-instance lock and the control socket, and
 /// `open` starts it the way the Finder does. Returns whether that is arranged.
-fn relaunch_after_exit(bundle: &Path) -> bool {
+#[cfg(target_os = "macos")]
+fn restart_after_exit(bundle: &Path) -> bool {
     let script = r#"while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; exec /usr/bin/open "$2""#;
     let spawned = std::process::Command::new("/bin/sh")
         .args(["-c", script, "relaunch"])
@@ -191,19 +233,25 @@ fn relaunch_after_exit(bundle: &Path) -> bool {
     spawned.is_ok()
 }
 
+/// The installer starts the new copy itself; installing ended this process
+/// before it could get here.
+#[cfg(windows)]
+fn restart_after_exit(_installed: &Path) -> bool {
+    true
+}
+
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn only_a_bundled_executable_has_a_bundle() {
-        let bundled = PathBuf::from(
+        let bundled = Path::new(
             "/Applications/Window Manager.app/Contents/MacOS/universal-tiling-window-manager",
         );
         assert_eq!(
-            bundle_of(&bundled),
+            bundle_of(bundled),
             Some(Path::new("/Applications/Window Manager.app"))
         );
         for unbundled in [

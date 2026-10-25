@@ -11,9 +11,7 @@ use utwm_config::{Chord, load};
 
 use crate::controller::{self, Command, Controller, Shared};
 use crate::platform::Shortcuts;
-#[cfg(target_os = "macos")]
-use crate::updates;
-use crate::{logging, poll, tray};
+use crate::{logging, poll, tray, updates};
 
 pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     // Every coordinate this app reads or writes is a physical pixel. Tauri's
@@ -51,17 +49,15 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
     });
     let (commands, receiver) = std::sync::mpsc::channel::<Command>();
 
-    let builder = tauri::Builder::default()
+    let app = tauri::Builder::default()
         .runtime(tauri_runtime_wry::Wry::default())
         // A second launch exits here, before it registers a second set of
         // shortcuts.
         .plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
             tracing::info!(?argv, "already running; ignoring the second launch");
-        }));
-    // Reads the endpoint and the public key from tauri.conf.json.
-    #[cfg(target_os = "macos")]
-    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
-    let app = builder
+        }))
+        // Reads the endpoint and the public key from tauri.conf.json.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             // A menu bar app: no Dock icon and no menu bar of its own.
             #[cfg(target_os = "macos")]
@@ -81,19 +77,15 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
                 let _ = reload.send(Command::Reload);
             })?;
 
+            let updates = updates::start(handle.clone(), commands.clone(), Arc::clone(&shared));
             let controller = Controller::new(
                 Arc::clone(&shared),
                 Arc::new(config),
                 load_error,
                 shortcuts,
                 refused,
+                updates,
             );
-            #[cfg(target_os = "macos")]
-            let controller = controller.with_updates(updates::start(
-                handle.clone(),
-                commands.clone(),
-                Arc::clone(&shared),
-            ));
             tray::create(
                 &handle,
                 controller.config(),
