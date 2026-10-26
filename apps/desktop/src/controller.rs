@@ -5,10 +5,14 @@
 //! listener, a tray menu click, a system event, a configuration change — so the
 //! order of events is the order they happened in and no state needs a lock.
 
+#[cfg(target_os = "linux")]
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
+#[cfg(target_os = "linux")]
+use std::time::Duration;
 
 use utwm_config::bindings::Resolved;
 use utwm_config::{ActionId, Chord, Target};
@@ -33,11 +37,21 @@ pub enum Command {
     TogglePause,
     ToggleAutostart,
     OpenConfigFolder,
-    /// Accessibility access came or went, or a Rectangle started or quit.
-    #[cfg(target_os = "macos")]
+    /// What the menu's first line reports changed: on the Mac, Accessibility
+    /// access came or went, or a Rectangle started or quit; on Linux, the
+    /// GNOME Shell extension came or went, or took a key it had refused.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     StatusChanged,
-    #[cfg(target_os = "macos")]
-    OpenAccessSettings,
+    /// The menu's first line was clicked; it takes the step it describes.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    FixStatus,
+    /// GNOME can show a tray at last, so the tray is made.
+    #[cfg(target_os = "linux")]
+    TrayHostAppeared,
+    /// A moment after GNOME's shortcuts were freed: whatever is still
+    /// refused gets its GNOME shortcut back.
+    #[cfg(target_os = "linux")]
+    CheckFreed,
     /// The menu asked for an update check.
     CheckForUpdates,
     /// What the update thread is doing, for the menu.
@@ -53,6 +67,10 @@ pub struct Shared {
     pub explicit_config: Option<PathBuf>,
     /// Files whose changes trigger a reload.
     pub watched: Arc<Mutex<Vec<PathBuf>>>,
+    /// The controller's own channel, for a tray made after startup and for
+    /// checks it schedules for itself.
+    #[cfg(target_os = "linux")]
+    pub commands: Sender<Command>,
 }
 
 pub struct Controller {
@@ -69,14 +87,25 @@ pub struct Controller {
     /// shortcut pressed without it asks once rather than on every press.
     #[cfg(target_os = "macos")]
     asked_for_access: bool,
+    /// The GNOME settings holding refused chords, which the menu offers to
+    /// free.
+    #[cfg(target_os = "linux")]
+    gnome_held: Vec<utwm_linux::conflicts::Holder>,
+    /// GNOME shortcuts just freed, until the check a moment later.
+    #[cfg(target_os = "linux")]
+    freed: Vec<utwm_linux::conflicts::Holder>,
+    /// Chords that freeing GNOME's shortcuts didn't free, which the menu no
+    /// longer offers.
+    #[cfg(target_os = "linux")]
+    unfreeable: HashSet<Chord>,
     /// The update thread, when this copy was installed the way a release
     /// installs.
     updates: Option<updates::Updates>,
     update_state: updates::State,
     /// The last application window in the foreground, for tray menu actions:
     /// by the time a menu item is clicked on Windows the tray itself has the
-    /// focus. The Mac's menu bar never takes it, so the Mac keeps none and
-    /// acts on the foreground window.
+    /// focus. Neither the Mac's menu bar nor GNOME's top bar takes it, so
+    /// those keep none and act on the foreground window.
     last_target: Option<Window>,
 }
 
@@ -98,6 +127,12 @@ impl Controller {
             engine: Engine::new(),
             #[cfg(target_os = "macos")]
             asked_for_access: false,
+            #[cfg(target_os = "linux")]
+            gnome_held: Vec::new(),
+            #[cfg(target_os = "linux")]
+            freed: Vec::new(),
+            #[cfg(target_os = "linux")]
+            unfreeable: HashSet::new(),
             updates,
             update_state: updates::State::Idle,
             last_target: if cfg!(windows) {
@@ -114,7 +149,7 @@ impl Controller {
             if !utwm_macos::permission::is_granted() {
                 return tray::Status {
                     text: "Needs Accessibility access: open System Settings…".to_owned(),
-                    opens_access_settings: true,
+                    clickable: true,
                 };
             }
             if let Some(name) = utwm_macos::conflicts::rectangle_running() {
@@ -122,6 +157,10 @@ impl Controller {
                     "{name} is running too and answers the same shortcuts; quit it"
                 ));
             }
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(status) = self.gnome_status() {
+            return status;
         }
         tray::Status::plain(tray::status_line(
             &self.config,
@@ -170,8 +209,22 @@ impl Controller {
                     }
                     self.refresh_tray();
                 }
+                // The extension may be a new one holding nothing yet, or one
+                // that just took a key it had refused.
+                #[cfg(target_os = "linux")]
+                Command::StatusChanged => {
+                    let refused = self.shortcuts.set_bindings(self.chords());
+                    self.set_refused(refused);
+                    self.refresh_tray();
+                }
                 #[cfg(target_os = "macos")]
-                Command::OpenAccessSettings => self.ask_for_access(),
+                Command::FixStatus => self.ask_for_access(),
+                #[cfg(target_os = "linux")]
+                Command::FixStatus => self.fix_status(),
+                #[cfg(target_os = "linux")]
+                Command::TrayHostAppeared => self.create_tray(),
+                #[cfg(target_os = "linux")]
+                Command::CheckFreed => self.check_freed(),
                 Command::CheckForUpdates => self.check_for_updates(),
                 Command::Updates(state) => {
                     self.update_state = state;
@@ -472,6 +525,11 @@ impl Controller {
                 {
                     self.refused = self.shortcuts.set_bindings(self.chords());
                 }
+                #[cfg(target_os = "linux")]
+                {
+                    let refused = self.shortcuts.set_bindings(self.chords());
+                    self.set_refused(refused);
+                }
                 // History holds actions by name; a new export can't invalidate it.
             }
             Err(error) => {
@@ -486,7 +544,17 @@ impl Controller {
     fn toggle_pause(&mut self) {
         let paused = !self.shared.paused.load(Ordering::SeqCst);
         self.shared.paused.store(paused, Ordering::SeqCst);
+        #[cfg(windows)]
         self.shortcuts.set_paused(paused);
+        #[cfg(target_os = "macos")]
+        {
+            self.refused = self.shortcuts.set_paused(paused);
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let refused = self.shortcuts.set_paused(paused);
+            self.set_refused(refused);
+        }
         tracing::info!(paused, "shortcuts");
         self.refresh_tray();
     }
@@ -528,10 +596,165 @@ impl Controller {
         }
     }
 
-    /// Shows a short message as the tray tooltip.
+    /// Shows a short message: as the tray's tooltip, or on Linux, whose tray
+    /// shows no tooltips, as a notification.
     fn notify(&self, message: &str) {
         if let Some(app) = self.shared.app.get() {
+            #[cfg(not(target_os = "linux"))]
             tray::set_tooltip(app, message);
+            #[cfg(target_os = "linux")]
+            utwm_linux::notify::show(&app.package_info().name, message);
+        }
+    }
+
+    /// The menu's first line on Linux when something needs doing: the next
+    /// step toward a running GNOME Shell extension, or the offer to free the
+    /// shortcuts GNOME holds.
+    #[cfg(target_os = "linux")]
+    fn gnome_status(&self) -> Option<tray::Status> {
+        use utwm_linux::extension::State;
+
+        let step = |text: &str| {
+            Some(tray::Status {
+                text: text.to_owned(),
+                clickable: true,
+            })
+        };
+        let state = utwm_linux::extension::state();
+        let problem = match &state {
+            State::NoGnomeShell => Some(tray::Status::plain(
+                "Needs GNOME Shell; this desktop isn't supported yet".to_owned(),
+            )),
+            State::UserExtensionsOff => step("GNOME's extensions are switched off: switch them on"),
+            State::NotInstalled => step("Needs its GNOME Shell extension: set it up"),
+            State::NeedsLogIn => step("Log out and back in to start its GNOME Shell extension…"),
+            State::Disabled => step("Its GNOME Shell extension is off: switch it on"),
+            State::Failed(error) => Some(tray::Status::plain(format!(
+                "Its GNOME Shell extension failed: {error}"
+            ))),
+            State::OutOfDate(version) => Some(tray::Status::plain(format!(
+                "Its GNOME Shell extension doesn't support GNOME {version} yet"
+            ))),
+            State::Stale { compatible: false } => {
+                step("Log out and back in to finish updating its GNOME Shell extension…")
+            }
+            State::Stale { compatible: true } | State::Active => None,
+        };
+        problem
+            .or_else(|| {
+                let held = self
+                    .gnome_held
+                    .iter()
+                    .map(|holder| holder.chord)
+                    .collect::<HashSet<_>>()
+                    .len();
+                (held > 0).then(|| tray::Status {
+                    text: if held == 1 {
+                        "1 shortcut is GNOME's own: use it here".to_owned()
+                    } else {
+                        format!("{held} shortcuts are GNOME's own: use them here")
+                    },
+                    clickable: true,
+                })
+            })
+            .or_else(|| {
+                matches!(state, State::Stale { compatible: true }).then(|| tray::Status {
+                    text: "Log out and back in to finish updating its GNOME Shell extension…"
+                        .to_owned(),
+                    clickable: true,
+                })
+            })
+    }
+
+    /// Takes the step the menu's first line offers on Linux.
+    #[cfg(target_os = "linux")]
+    fn fix_status(&mut self) {
+        use utwm_linux::extension::{self, State};
+
+        let (result, what) = match extension::state() {
+            State::Active | State::Stale { compatible: true } if !self.gnome_held.is_empty() => {
+                (self.free_gnome_shortcuts(), "free GNOME's shortcuts")
+            }
+            State::Stale { compatible: true } => (extension::log_out(), "log out"),
+            _ => (extension::set_up(), "set up the GNOME Shell extension"),
+        };
+        if let Err(error) = result {
+            tracing::warn!(%error, what, "could not take the menu's step");
+            self.notify(&format!("Couldn't {what}: {error}"));
+        }
+        self.refresh_tray();
+    }
+
+    /// Frees the keys GNOME's own shortcuts hold, leaving those shortcuts
+    /// their other keys. The extension takes each key as GNOME lets go of it;
+    /// a moment later, whatever it still couldn't take goes back to GNOME.
+    #[cfg(target_os = "linux")]
+    fn free_gnome_shortcuts(&mut self) -> std::io::Result<()> {
+        self.freed = std::mem::take(&mut self.gnome_held);
+        let freeing = utwm_linux::conflicts::free(&self.freed);
+        let commands = self.shared.commands.clone();
+        std::thread::Builder::new()
+            .name("check-freed".to_owned())
+            .spawn(move || {
+                std::thread::sleep(Duration::from_secs(3));
+                let _ = commands.send(Command::CheckFreed);
+            })?;
+        freeing
+    }
+
+    #[cfg(target_os = "linux")]
+    fn check_freed(&mut self) {
+        let refused = self.shortcuts.set_bindings(self.chords());
+        let unhelped: Vec<utwm_linux::conflicts::Holder> = std::mem::take(&mut self.freed)
+            .into_iter()
+            .filter(|holder| refused.contains(&holder.chord))
+            .collect();
+        if !unhelped.is_empty() {
+            tracing::warn!(
+                count = unhelped.len(),
+                "freeing GNOME's shortcuts didn't free these keys; giving them back"
+            );
+            if let Err(error) = utwm_linux::conflicts::restore(&unhelped) {
+                tracing::warn!(%error, "could not give GNOME its shortcuts back");
+            }
+            self.unfreeable
+                .extend(unhelped.iter().map(|holder| holder.chord));
+        }
+        self.set_refused(refused);
+        self.refresh_tray();
+    }
+
+    /// Records the chords GNOME refused, and which of them GNOME's own
+    /// shortcuts hold.
+    #[cfg(target_os = "linux")]
+    fn set_refused(&mut self, refused: Vec<Chord>) {
+        let offered: Vec<Chord> = refused
+            .iter()
+            .filter(|chord| !self.unfreeable.contains(chord))
+            .copied()
+            .collect();
+        self.gnome_held = utwm_linux::conflicts::holders(&offered);
+        self.refused = refused;
+    }
+
+    /// Makes the tray, once GNOME can show one.
+    #[cfg(target_os = "linux")]
+    fn create_tray(&self) {
+        let Some(app) = self.shared.app.get() else {
+            return;
+        };
+        let paused = self.shared.paused.load(Ordering::SeqCst);
+        let updates = self.updates_line();
+        let made = tray::create(
+            app,
+            &self.config,
+            &self.status(),
+            paused,
+            updates.as_ref(),
+            self.shared.commands.clone(),
+        );
+        if let Err(error) = made {
+            tracing::warn!(%error, "could not make the tray");
         }
     }
 }
@@ -567,9 +790,24 @@ pub fn hotkeys_reporter(sender: Sender<Command>) -> utwm_macos::hotkeys::Reporte
     })
 }
 
+/// Forwards the GNOME Shell extension's news into the controller's channel:
+/// a shortcut pressed, or the extension coming, going or taking a key.
+#[cfg(target_os = "linux")]
+pub fn shortcuts_reporter(sender: Sender<Command>) -> utwm_linux::shortcuts::Reporter {
+    use utwm_linux::shortcuts::ShortcutEvent;
+
+    Box::new(move |event| {
+        let command = match event {
+            ShortcutEvent::Triggered(index) => Command::Binding(index),
+            ShortcutEvent::ShellChanged => Command::StatusChanged,
+        };
+        let _ = sender.send(command);
+    })
+}
+
 /// Forwards the command line's requests into the controller's channel.
-#[cfg(target_os = "macos")]
-pub fn control_reporter(sender: Sender<Command>) -> utwm_macos::control::Reporter {
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn control_reporter(sender: Sender<Command>) -> Box<dyn Fn(Control) + Send + 'static> {
     Box::new(move |control| {
         let _ = sender.send(Command::Control(control));
     })

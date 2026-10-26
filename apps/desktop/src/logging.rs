@@ -1,8 +1,8 @@
 //! Logs to `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on
-//! Windows and `~/Library/Logs/universal-tiling-window-manager/log.txt` on the
-//! Mac, keeping one previous file. `UTWM_LOG` sets the filter (`info` by
-//! default; `debug` shows every key binding that fires and where each window
-//! landed).
+//! Windows, `~/Library/Logs/universal-tiling-window-manager/log.txt` on the
+//! Mac and `~/.local/state/universal-tiling-window-manager/log.txt` on Linux,
+//! keeping one previous file. `UTWM_LOG` sets the filter (`info` by default;
+//! `debug` shows every key binding that fires and where each window landed).
 
 use std::fs::{self, OpenOptions};
 use std::path::PathBuf;
@@ -13,8 +13,13 @@ const MAX_LOG_BYTES: u64 = 1 << 20;
 pub fn log_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     let dir = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     let dir = std::env::home_dir().map(|home| home.join("Library").join("Logs"));
+    #[cfg(target_os = "linux")]
+    let dir = std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .filter(|dir| dir.is_absolute())
+        .or_else(|| std::env::home_dir().map(|home| home.join(".local").join("state")));
     dir.map(|dir| dir.join(utwm_config::load::APP_DIR))
 }
 

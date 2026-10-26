@@ -40,24 +40,29 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
         "configuration loaded"
     );
 
+    let (commands, receiver) = std::sync::mpsc::channel::<Command>();
     let shared = Arc::new(Shared {
         app: OnceLock::new(),
         paused: AtomicBool::new(false),
         home,
         explicit_config,
         watched: Arc::new(Mutex::new(watched)),
+        #[cfg(target_os = "linux")]
+        commands: commands.clone(),
     });
-    let (commands, receiver) = std::sync::mpsc::channel::<Command>();
 
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .runtime(tauri_runtime_wry::Wry::default())
         // A second launch exits here, before it registers a second set of
         // shortcuts.
         .plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
             tracing::info!(?argv, "already running; ignoring the second launch");
-        }))
-        // Reads the endpoint and the public key from tauri.conf.json.
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        }));
+    // Reads the endpoint and the public key from tauri.conf.json. Linux has
+    // no releases to update from yet.
+    #[cfg(any(windows, target_os = "macos"))]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    let app = builder
         .setup(move |app| {
             // A menu bar app: no Dock icon and no menu bar of its own.
             #[cfg(target_os = "macos")]
@@ -86,14 +91,30 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
                 refused,
                 updates,
             );
-            tray::create(
+            let tray = tray::create(
                 &handle,
                 controller.config(),
                 &controller.status(),
                 false,
                 controller.updates_line().as_ref(),
                 commands.clone(),
-            )?;
+            );
+            // GNOME shows tray icons only through an AppIndicator extension,
+            // which may start after this app at login, or not be there at all.
+            #[cfg(target_os = "linux")]
+            if let Err(error) = tray {
+                tracing::warn!(%error, "no tray yet; it appears once GNOME can show one");
+                let commands = commands.clone();
+                std::thread::Builder::new()
+                    .name("tray-host".to_owned())
+                    .spawn(move || {
+                        if utwm_linux::tray_host::wait() {
+                            let _ = commands.send(Command::TrayHostAppeared);
+                        }
+                    })?;
+            }
+            #[cfg(not(target_os = "linux"))]
+            tray?;
             std::thread::Builder::new()
                 .name("controller".to_owned())
                 .spawn(move || controller.run(receiver))?;
@@ -108,6 +129,13 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
         } => api.prevent_exit(),
         #[cfg(target_os = "macos")]
         RunEvent::Exit => utwm_macos::control::remove_socket(),
+        // Gives every key back at once rather than when GNOME Shell notices
+        // this process has gone.
+        #[cfg(target_os = "linux")]
+        RunEvent::Exit => {
+            utwm_linux::shortcuts::release();
+            utwm_linux::control::remove_socket();
+        }
         _ => {}
     });
     Ok(())
@@ -186,4 +214,30 @@ fn listen(
             }
         })?;
     Ok((hotkeys, refused))
+}
+
+/// Keeps the command line's socket open for as long as the app runs.
+#[cfg(target_os = "linux")]
+struct ControlGuard(#[allow(dead_code)] utwm_linux::control::Listener);
+
+/// Starts listening for the GNOME Shell extension and the shortcuts it grabs,
+/// and opens the command line's socket. Nothing is grabbed until the extension
+/// is there: the menu's first line follows it, and the bindings go to it as
+/// soon as it appears.
+#[cfg(target_os = "linux")]
+fn listen(
+    app: &mut tauri::App,
+    chords: Vec<Chord>,
+    commands: &Sender<Command>,
+) -> Result<(Shortcuts, Vec<Chord>), Box<dyn std::error::Error>> {
+    use utwm_linux::{control, extension};
+
+    // Puts back this app's copy of the extension where the installed files
+    // differ, and drops an update GNOME staged for it from elsewhere.
+    extension::refresh();
+    let (shortcuts, refused) =
+        Shortcuts::start(chords, controller::shortcuts_reporter(commands.clone()))?;
+    let listener = control::Listener::start(controller::control_reporter(commands.clone()))?;
+    app.manage(ControlGuard(listener));
+    Ok((shortcuts, refused))
 }

@@ -1,15 +1,16 @@
 name: ci
 
 # The pure crates (export parsing, key translation, Rectangle's geometry) build
-# and test anywhere, so they gate on Linux, where runners are fastest. The Win32
-# and macOS crates and the Tauri app build on their own platforms; those jobs
-# also make the release build `cargo install --git` would make, and what a
-# release ships (the Windows installer, the Mac app bundle), so a broken
-# install fails here first.
+# and test anywhere, so they gate on Linux, where runners are fastest. The Win32,
+# macOS and Linux crates and the Tauri app build on their own platforms; those
+# jobs also make the release build `cargo install --git` would make, and what a
+# release ships or `just install` lays out (the Windows installer, the Mac app
+# bundle, the Linux install), so a broken install fails here first.
 #
 # The end-to-end checks (tools/e2e) need a running app, a real desktop and, on
 # the Mac, Accessibility access, so they run by hand: `just run`, then
-# `just e2e`. Both jobs still build and lint them with the workspace.
+# `just e2e`, or on Linux `just e2e-headless`, which brings its own GNOME
+# Shell. Each platform's job still builds and lints them with the workspace.
 #
 # release.yml calls this as its gate, checking out the release tag, so nothing
 # ships unless the tag passes what a pull request must.
@@ -82,6 +83,42 @@ jobs:
       - name: installer (what a release ships)
         working-directory: apps/desktop
         run: npx --yes @tauri-apps/cli@3.0.0-alpha.5 build --bundles nsis --ci
+
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # GTK and WebKitGTK, which Tauri links on Linux, and libdbus for its
+      # event loop.
+      - name: system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libwebkit2gtk-4.1-dev libdbus-1-dev pkg-config desktop-file-utils
+      - run: cargo clippy --locked --workspace -- -D warnings
+      - run: cargo test --locked --workspace
+      - name: release build (what cargo install builds)
+        run: cargo build --locked --release -p universal-tiling-window-manager
+      - name: check an export with the release binary
+        run: |
+          out=$(target/release/universal-tiling-window-manager check)
+          echo "$out"
+          grep -q 'Bindings (22 chords)' <<< "$out" || {
+            echo "check did not report Rectangle's 22 default shortcuts"
+            exit 1
+          }
+      - name: install layout (what just install puts under ~/.local)
+        run: |
+          cargo run --locked -p utwm-bundle
+          desktop-file-validate target/release/bundle/linux/share/applications/*.desktop
+      - name: GNOME Shell extension
+        run: |
+          cp crates/utwm-linux/gnome-extension/extension.js "$RUNNER_TEMP/extension.mjs"
+          node --check "$RUNNER_TEMP/extension.mjs"
+          jq empty crates/utwm-linux/gnome-extension/metadata.json
 
   macos:
     runs-on: macos-latest

@@ -4,6 +4,7 @@ members = [
     "apps/desktop",
     "crates/utwm-config",
     "crates/utwm-layout",
+    "crates/utwm-linux",
     "crates/utwm-macos",
     "crates/utwm-windows",
     "tools/bundle",
@@ -23,7 +24,7 @@ authors = ["John Carmack"]
 # it, so failures are logged and the action is skipped. `expect` stays legal: it
 # documents an invariant. utwm-windows and utwm-macos are the crates that talk to
 # the operating system, so each carries its own copy of this table with
-# `unsafe_code` allowed.
+# `unsafe_code` allowed; utwm-linux talks to GNOME over D-Bus and needs none.
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
@@ -47,6 +48,7 @@ float_cmp_const = "warn"
 [workspace.dependencies]
 utwm-config = { path = "crates/utwm-config" }
 utwm-layout = { path = "crates/utwm-layout" }
+utwm-linux = { path = "crates/utwm-linux" }
 utwm-macos = { path = "crates/utwm-macos" }
 utwm-windows = { path = "crates/utwm-windows" }
 arc-swap = "1.7"

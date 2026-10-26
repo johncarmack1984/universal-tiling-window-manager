@@ -1,8 +1,8 @@
 //! Which machine the bindings are for.
 //!
-//! The same configuration serves both. On Windows each Mac shortcut becomes
-//! the Windows key in the same position; on the Mac it stays exactly as the
-//! configuration has it.
+//! The same configuration serves all three. On Windows and Linux each Mac
+//! shortcut becomes the PC key in the same position; on the Mac it stays
+//! exactly as the configuration has it.
 
 use std::fmt;
 
@@ -10,14 +10,17 @@ use std::fmt;
 pub enum Platform {
     Windows,
     Mac,
+    Linux,
 }
 
 impl Platform {
-    /// The platform this build runs on. Anything that isn't a Mac reads
-    /// exports the Windows way, which is also what `check` shows on Linux.
+    /// The platform this build runs on. Anything that is neither a Mac nor
+    /// Linux reads exports the Windows way.
     pub const fn current() -> Self {
         if cfg!(target_os = "macos") {
             Self::Mac
+        } else if cfg!(target_os = "linux") {
+            Self::Linux
         } else {
             Self::Windows
         }
@@ -29,6 +32,7 @@ impl fmt::Display for Platform {
         f.write_str(match self {
             Self::Windows => "Windows",
             Self::Mac => "the Mac",
+            Self::Linux => "Linux",
         })
     }
 }

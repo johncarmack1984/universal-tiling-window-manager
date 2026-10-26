@@ -1,0 +1,26 @@
+[package]
+name = "utwm-linux"
+description = "The Linux side: a GNOME Shell extension, driven over D-Bus, that grabs the shortcuts and finds, measures and moves windows"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+utwm-config.workspace = true
+utwm-layout.workspace = true
+tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# zbus as ksni and tauri-plugin-single-instance already build it: its own
+# async-io executor and the blocking API. Never `tokio`: features unify, and
+# it would move those two onto tokio as well.
+zbus = { version = "5.19", default-features = false, features = ["async-io", "blocking-api"] }
+
+[lints]
+workspace = true

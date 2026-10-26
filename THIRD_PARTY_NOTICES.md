@@ -37,6 +37,10 @@ Rectangle Pro is a closed-source app by the same author. Nothing of it is copied
 
 The techniques in `crates/utwm-windows/src/window.rs` for placing other apps' windows (measuring and compensating for invisible DWM borders, applying a placement a second time when a window crosses to a display with a different scale, restoring a maximized window through its placement) follow the approach of [PowerToys FancyZones](https://github.com/microsoft/PowerToys/tree/main/src/modules/fancyzones), which is MIT-licensed, Copyright (c) Microsoft Corporation. No FancyZones code is included.
 
+## GNOME Shell and Ubuntu's Tiling Assistant
+
+The GNOME Shell extension in `crates/utwm-linux/gnome-extension/` grabs shortcuts the way GNOME Shell grabs them for gnome-settings-daemon (`_grabAcceleratorForSender` in GNOME Shell's `js/ui/shellDBus.js`: Mutter's `grab_accelerator`, the binding allowed in the normal action mode, every grab released when its client leaves the bus), and moves a window the way Ubuntu's Tiling Assistant extension does (`tilingWindowManager.js`: restore it if maximized, then a move on its own followed by a move and resize, each as a user operation). Both are GPL-2.0-or-later. Only the way they use GNOME's APIs is followed; no code from either is included.
+
 ## RustDesk
 
 The table that maps macOS key codes to Windows scan codes in `crates/utwm-config/src/keys.rs` mirrors the mapping RustDesk applies in its Map keyboard mode ([rustdesk-org/rdev](https://github.com/rustdesk-org/rdev)), so that a Mac keyboard driving Windows through RustDesk lands on the expected keys. Only the facts of the mapping are used.

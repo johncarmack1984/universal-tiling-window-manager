@@ -5,7 +5,8 @@
 //! Alt, Shift, Win), because that is what the Windows hook matches. On the Mac
 //! the same chord is the macOS key code in that position with Control, Option,
 //! Shift and Command, so an export resolves to exactly the shortcuts Rectangle
-//! Pro bound.
+//! Pro bound. On Linux it is the input event code in that position, with Super
+//! for Win.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -312,17 +313,18 @@ pub fn resolve(
     skipped.sort_by_key(|skip| actions::cycle_order(&skip.name));
 
     let mut settings = Settings::from_export(export);
-    let ignored_apps = match platform {
-        Platform::Windows => {
-            if !settings.disabled_apps.is_empty() {
-                settings.not_applied.push((
-                    "disabledApps".to_owned(),
-                    "macOS bundle ids; list Windows apps under ignored_apps in config.toml"
-                        .to_owned(),
-                ));
-            }
-            overrides.ignored_apps.clone()
+    let mut elsewhere = |own: &[String], key: &str| {
+        if !settings.disabled_apps.is_empty() {
+            settings.not_applied.push((
+                "disabledApps".to_owned(),
+                format!("macOS bundle ids; list {platform} apps under {key} in config.toml"),
+            ));
         }
+        own.to_vec()
+    };
+    let ignored_apps = match platform {
+        Platform::Windows => elsewhere(&overrides.ignored_apps, "ignored_apps"),
+        Platform::Linux => elsewhere(&overrides.linux.ignored_apps, "[linux] ignored_apps"),
         // Rectangle's own ignore list, plus any the Mac adds.
         Platform::Mac => settings
             .disabled_apps
@@ -369,6 +371,13 @@ impl<'a> Keyboard<'a> {
                 map: ModifierMap::default(),
                 shortcuts: &overrides.mac.shortcuts,
             },
+            // A Linux keyboard is a PC keyboard with Super where the Mac has
+            // Command, which is the default map too.
+            Platform::Linux => Self {
+                platform,
+                map: ModifierMap::default(),
+                shortcuts: &overrides.linux.shortcuts,
+            },
         }
     }
 
@@ -377,21 +386,21 @@ impl<'a> Keyboard<'a> {
         match self.platform {
             Platform::Windows => "[shortcuts]",
             Platform::Mac => "[mac.shortcuts]",
+            Platform::Linux => "[linux.shortcuts]",
         }
     }
 
     /// A chord the way this platform's keyboard labels it.
     fn describe(&self, chord: Chord) -> String {
-        match (self.platform, chord.to_mac()) {
-            (Platform::Mac, Some(mac)) => mac.to_string(),
-            _ => chord.to_string(),
-        }
+        chord.label(self.platform)
     }
 
     /// Why an overridden chord can't bind here, if it can't.
     fn refuses(&self, chord: Chord) -> Option<&'static str> {
         match self.platform {
-            Platform::Windows if chord.key.is_lock_key() => Some("lock keys are never bound"),
+            Platform::Windows | Platform::Linux if chord.key.is_lock_key() => {
+                Some("lock keys are never bound")
+            }
             Platform::Mac if chord.to_mac().is_none() => {
                 Some("a Mac keyboard has no key in that position")
             }
@@ -432,9 +441,9 @@ impl<'a> Keyboard<'a> {
             return Err(SkipReason::MouseButton);
         }
         let key = keys::from_mac_key_code(mac.key_code).ok_or(SkipReason::UnknownKeyCode)?;
-        // A Mac's keypad Clear sits where Windows has NumLock; only Windows
-        // can't bind it.
-        if self.platform == Platform::Windows && key.is_lock_key() {
+        // A Mac's keypad Clear sits where a PC has NumLock; only the Mac can
+        // bind it.
+        if self.platform != Platform::Mac && key.is_lock_key() {
             return Err(SkipReason::LockKey(key));
         }
         Ok(Chord {
@@ -647,6 +656,99 @@ mod tests {
         );
         assert_eq!(windows.ignored_apps, ["mstsc.exe"]);
         assert_eq!(windows.settings.not_applied.len(), 1);
+    }
+
+    #[test]
+    fn linux_binds_the_pc_keys_and_labels_them_its_own_way() {
+        let shortcuts = export(
+            r#""topLeftEighth": { "keyCode": 71, "modifierFlags": 786432 },
+               "nextDisplay": { "keyCode": 124, "modifierFlags": 1835008 }"#,
+            "",
+        );
+        let linux = resolve(
+            &shortcuts,
+            &Overrides::default(),
+            Source::builtin(),
+            Platform::Linux,
+        );
+        let labels: Vec<String> = linux
+            .bindings
+            .iter()
+            .map(|binding| binding.chord.label(Platform::Linux))
+            .collect();
+        assert_eq!(labels, ["Ctrl+Alt+Super+Right"]);
+        assert!(
+            matches!(linux.skipped[0].reason, SkipReason::LockKey(_)),
+            "keypad Clear lands on NumLock, which Linux never binds either"
+        );
+        let windows = resolve_plain(&shortcuts);
+        assert_eq!(linux.bindings[0].chord, windows.bindings[0].chord);
+    }
+
+    #[test]
+    fn the_linux_table_rebinds_and_unbinds_on_linux_only() {
+        let overrides = Overrides::parse(
+            "[linux.shortcuts]\nleftHalf = \"ctrl+alt+h\"\nrestore = \"\"\ncenter = \"super+alt+c\"\nmaximize = \"ctrl+alt+numlock\"",
+            Path::new("config.toml"),
+        )
+        .expect("parses");
+        let shortcuts = export(
+            r#""leftHalf": { "keyCode": 123, "modifierFlags": 786432 },
+               "restore": { "keyCode": 51, "modifierFlags": 786432 },
+               "maximize": { "keyCode": 36, "modifierFlags": 786432 }"#,
+            "",
+        );
+        let linux = resolve(&shortcuts, &overrides, Source::builtin(), Platform::Linux);
+        let labels: Vec<String> = linux
+            .bindings
+            .iter()
+            .map(|binding| binding.chord.label(Platform::Linux))
+            .collect();
+        assert_eq!(labels, ["Ctrl+Alt+H", "Ctrl+Alt+Enter", "Alt+Super+C"]);
+        assert_eq!(linux.skipped.len(), 1);
+        assert_eq!(linux.skipped[0].reason, SkipReason::Unbound);
+        assert_eq!(
+            linux.warnings.len(),
+            1,
+            "a lock key keeps the export's chord"
+        );
+
+        let windows = resolve_plain(&shortcuts);
+        let chords: Vec<String> = windows
+            .bindings
+            .iter()
+            .map(|binding| binding.chord.to_string())
+            .collect();
+        assert_eq!(
+            chords,
+            ["Ctrl+Alt+Left", "Ctrl+Alt+Enter", "Ctrl+Alt+Backspace"]
+        );
+    }
+
+    #[test]
+    fn linux_ignores_its_own_apps() {
+        let overrides = Overrides::parse(
+            "ignored_apps = [\"mstsc.exe\"]\n[linux]\nignored_apps = [\"org.gnome.Terminal\"]",
+            Path::new("config.toml"),
+        )
+        .expect("parses");
+        let with_disabled = export(
+            "",
+            r#""disabledApps": { "string": "[\"com.example.Game\"]" }"#,
+        );
+        let linux = resolve(
+            &with_disabled,
+            &overrides,
+            Source::builtin(),
+            Platform::Linux,
+        );
+        assert_eq!(linux.ignored_apps, ["org.gnome.Terminal"]);
+        assert_eq!(linux.settings.not_applied.len(), 1);
+        assert!(
+            linux.settings.not_applied[0]
+                .1
+                .contains("[linux] ignored_apps")
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 [package]
 name = "universal-tiling-window-manager"
-description = "A tiling window manager you drive from the keyboard, on Windows and the Mac, with one configuration for both"
+description = "A tiling window manager you drive from the keyboard, on Windows, the Mac and Linux, with one configuration for all three"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -35,6 +35,9 @@ utwm-windows.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 utwm-macos.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+utwm-linux.workspace = true
 
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 # Installs releases (src/updates.rs). native-tls is the system's own TLS
