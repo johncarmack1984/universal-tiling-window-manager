@@ -15,13 +15,7 @@ use std::process::ExitCode;
 
 #[cfg(windows)]
 fn main() -> ExitCode {
-    match windows::run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("{error}");
-            ExitCode::FAILURE
-        }
-    }
+    windows::run()
 }
 
 #[cfg(target_os = "macos")]
