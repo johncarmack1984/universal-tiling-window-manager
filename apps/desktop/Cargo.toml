@@ -38,6 +38,11 @@ utwm-macos.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 utwm-linux.workspace = true
+# Installs releases (src/updates.rs). Linux's own TLS is OpenSSL, whose
+# library changes its name with each major version, so a release linked to
+# one wouldn't start once a distribution moves to the next. rustls goes
+# inside the executable instead, and trusts the system's certificates.
+tauri-plugin-updater = { version = "=3.0.0-alpha.3", default-features = false, features = ["rustls-tls"] }
 
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 # Installs releases (src/updates.rs). native-tls is the system's own TLS

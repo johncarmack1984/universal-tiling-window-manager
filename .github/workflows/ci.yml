@@ -110,6 +110,16 @@ jobs:
             echo "check did not report Rectangle's 22 default shortcuts"
             exit 1
           }
+      # A release ships this executable. On a desktop that never built
+      # anything, the one library the README says to install must be all it
+      # needs beyond the base system, on the GNOME 50 distributions.
+      - name: runs with only the runtime library (what a release download needs)
+        run: |
+          app="$PWD/target/release/universal-tiling-window-manager"
+          docker run --rm -e DEBIAN_FRONTEND=noninteractive -v "$app:/usr/local/bin/app:ro" ubuntu:26.04 sh -c \
+            'apt-get update -qq && apt-get install -qq --yes --no-install-recommends libwebkit2gtk-4.1-0 >/dev/null && app version'
+          docker run --rm -v "$app:/usr/local/bin/app:ro" fedora:44 sh -c \
+            'dnf install --quiet --assumeyes webkit2gtk4.1 >/dev/null && app version'
       - name: install layout (what just install puts under ~/.local)
         run: |
           cargo run --locked -p utwm-bundle

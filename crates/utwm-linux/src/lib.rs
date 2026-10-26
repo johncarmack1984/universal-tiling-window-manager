@@ -19,6 +19,7 @@ pub mod conflicts;
 pub mod control;
 pub mod extension;
 mod gsettings;
+pub mod install;
 pub mod monitors;
 pub mod notify;
 mod shell;
@@ -33,6 +34,9 @@ pub use window::Window;
 /// The app's identifier, which names its desktop entry, its icon and its
 /// autostart entry, as it names the Mac's bundle.
 pub const APP_ID: &str = "com.johncarmack.universal-tiling-window-manager";
+
+/// The app's name, which its desktop and autostart entries show.
+pub const APP_NAME: &str = "Window Manager";
 
 /// `$XDG_DATA_HOME`, or `~/.local/share`: where GNOME looks for this user's
 /// extensions, desktop entries and icons.

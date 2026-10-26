@@ -2,7 +2,7 @@
 
 A tiling window manager you drive from the keyboard, on Windows, the Mac and Linux (GNOME). A shortcut puts the window in a half, a third, a corner, or on another display.
 
-One configuration serves every machine, with the same keys in the same places: ⌃⌥← on the Mac is Ctrl+Alt+Left on Windows and Linux. It lives in the tray on Windows and Linux and in the menu bar on the Mac, updates itself from signed releases on Windows and the Mac, and imports Rectangle Pro configs.
+One configuration serves every machine, with the same keys in the same places: ⌃⌥← on the Mac is Ctrl+Alt+Left on Windows and Linux. It lives in the tray on Windows and Linux and in the menu bar on the Mac, updates itself from signed releases, and imports Rectangle Pro configs.
 
 ## Install
 
@@ -37,7 +37,23 @@ just install
 
 The command line is inside the app: `"/Applications/Window Manager.app/Contents/MacOS/universal-tiling-window-manager" check`. A symlink on your PATH shortens that to `universal-tiling-window-manager check`, as on Windows. Start the app itself from Finder, Spotlight or `open -a "Window Manager"` rather than from a terminal, or macOS counts it as part of the terminal and asks for the terminal's Accessibility access instead of its own.
 
-On Linux it runs under GNOME on Wayland, the desktop Ubuntu and Fedora start in, and for now it is built from source, with [just](https://just.systems):
+On Linux it runs under GNOME on Wayland, the desktop Ubuntu and Fedora start in. Download `Window-Manager_<version>_x86_64` from the [latest release](https://github.com/johncarmack1984/universal-tiling-window-manager/releases/latest) and install it from a terminal:
+
+```sh
+sudo apt install libwebkit2gtk-4.1-0    # on Fedora: sudo dnf install webkit2gtk4.1
+chmod +x ~/Downloads/Window-Manager_*_x86_64
+~/Downloads/Window-Manager_*_x86_64 install
+```
+
+The first line installs WebKitGTK, the one library the app needs that a desktop may not have already. `install` puts the app in `~/.local/bin`, for your user only, with a desktop entry, so it opens from the app grid like any other app, and starts it in the tray; the download can go once it has. It is developed and tested on Ubuntu 26.04 with GNOME 50, on x86-64.
+
+GNOME lets no app move other apps' windows or grab shortcuts of its own, so the app works through a small GNOME Shell extension that it carries and installs, `universal-tiling-window-manager@johncarmack.com`. GNOME Shell only starts a new extension when you log in, so log out and back in once after the first install. Until the extension runs, the first line of the app's menu says what's left, and clicking it takes the next step: installing the extension, switching it on, or logging out. The menu shows in the top bar through Ubuntu's AppIndicator support; on other GNOMEs, install the AppIndicator and KStatusNotifierItem Support extension first. Tick **Start at login** in the menu to have it start with GNOME.
+
+GNOME keeps some of the same keys for its own shortcuts: Ctrl+Alt with an arrow switches workspaces, Ctrl+Alt+Shift+Up moves a window to the workspace above, Ctrl+Alt+D shows the desktop and Ctrl+Alt+T opens a terminal. While GNOME holds them, the menu's first line says how many of the app's shortcuts are GNOME's; clicking it takes just those keys out of GNOME's shortcuts and gives them to the app, leaving GNOME its other keys for the same things (Super+Page Up still switches workspaces). Settings → Keyboard → View and Customize Shortcuts puts any of them back, or `[linux.shortcuts]` in config.toml moves the app's action to another key instead.
+
+It keeps itself up to date as the Mac app does (above): a newer release's executable, its signature checked, takes the place of the one in `~/.local/bin`, and the app starts again. When the update changes the extension, the new copy loads at the next log-in, and the menu says so. The command line is `~/.local/bin/universal-tiling-window-manager check`, or `universal-tiling-window-manager check` with `~/.local/bin` on your PATH.
+
+To build it from a clone instead, with [just](https://just.systems):
 
 ```sh
 sudo apt install libwebkit2gtk-4.1-dev libdbus-1-dev pkg-config
@@ -46,13 +62,7 @@ cd universal-tiling-window-manager
 just install
 ```
 
-`just install` builds the app, puts it in `~/.local/bin` with a desktop entry, so it opens from the app grid like any other app, and starts it in the tray. Building needs Rust 1.95 or newer and the system's GTK and WebKitGTK headers (on Fedora, `webkit2gtk4.1-devel` and `dbus-devel`); when Homebrew's pkg-config comes first on your PATH, the justfile uses the system's. `cargo install --locked --git https://github.com/johncarmack1984/universal-tiling-window-manager universal-tiling-window-manager` works too, with the same headers. It is developed and tested on Ubuntu 26.04 with GNOME 50.
-
-GNOME lets no app move other apps' windows or grab shortcuts of its own, so the app works through a small GNOME Shell extension that it carries and installs, `universal-tiling-window-manager@johncarmack.com`. GNOME Shell only starts a new extension when you log in, so log out and back in once after the first install. Until the extension runs, the first line of the app's menu says what's left, and clicking it takes the next step: installing the extension, switching it on, or logging out. The menu shows in the top bar through Ubuntu's AppIndicator support; on other GNOMEs, install the AppIndicator and KStatusNotifierItem Support extension first. Tick **Start at login** in the menu to have it start with GNOME.
-
-GNOME keeps some of the same keys for its own shortcuts: Ctrl+Alt with an arrow switches workspaces, Ctrl+Alt+Shift+Up moves a window to the workspace above, Ctrl+Alt+D shows the desktop and Ctrl+Alt+T opens a terminal. While GNOME holds them, the menu's first line says how many of the app's shortcuts are GNOME's; clicking it takes just those keys out of GNOME's shortcuts and gives them to the app, leaving GNOME its other keys for the same things (Super+Page Up still switches workspaces). Settings → Keyboard → View and Customize Shortcuts puts any of them back, or `[linux.shortcuts]` in config.toml moves the app's action to another key instead.
-
-To update, `git pull` and `just install` again; it quits the running copy itself. When the update changes the extension, the new copy loads at the next log-in, and the menu says so. The command line is `~/.local/bin/universal-tiling-window-manager check`, or `universal-tiling-window-manager check` with `~/.local/bin` on your PATH.
+`just install` builds the app and installs it as `install` does a download. Building needs Rust 1.95 or newer and the system's GTK and WebKitGTK headers (on Fedora, `webkit2gtk4.1-devel` and `dbus-devel`); when Homebrew's pkg-config comes first on your PATH, the justfile uses the system's. To update a build from source, `git pull` and `just install` again; it quits the running copy itself. Like a download, it also updates itself once a release newer than its version comes out. `cargo install --locked --git https://github.com/johncarmack1984/universal-tiling-window-manager universal-tiling-window-manager` works too, with the same headers, but a copy built that way doesn't update itself, since it isn't in `~/.local/bin`.
 
 ## Shortcuts
 
@@ -156,7 +166,7 @@ Limits worth knowing:
 - **Elevated windows.** Windows only lets an app move an administrator window if the app runs elevated too, so those windows don't move.
 - **App shortcuts.** The shortcuts are global, so they take precedence over apps that use the same keys, such as VS Code's Ctrl+Alt+Up and Down on Windows.
 - **Full screen.** On the Mac, windows in full screen (in a Space of their own), minimized windows and sheets are left alone. On Linux, full-screen and minimized windows, and dialogs attached to their window, are left alone.
-- **GNOME only.** On Linux the app works under GNOME Shell; other desktops get a line in its menu saying they aren't supported yet. Linux builds don't update themselves yet.
+- **GNOME only.** On Linux the app works under GNOME Shell; other desktops get a line in its menu saying they aren't supported yet.
 - **Apps that inhibit shortcuts.** On GNOME, an app that takes all keys while it has the focus, as remote desktop and virtual machine apps do, gets the shortcuts too.
 
 ## Command line
@@ -171,6 +181,7 @@ universal-tiling-window-manager [--config <export.json>] [command]
   pause                 pause or resume the running instance's shortcuts
   quit                  stop the running instance
   update                make the running instance install the newest release
+  install               put this copy in ~/.local/bin and start it (Linux)
   version               print the version
 ```
 
@@ -184,7 +195,7 @@ The log is at `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on Window
 | `crates/utwm-layout` | Where each action puts a window; pure, so its tests run anywhere |
 | `crates/utwm-windows` | Win32: the low-level keyboard hook, finding and placing windows, displays, start at login |
 | `crates/utwm-macos` | macOS: Carbon hot keys, finding and placing windows through the Accessibility API, displays, start at login (a LaunchAgent) |
-| `crates/utwm-linux` | Linux under GNOME: the GNOME Shell extension (`gnome-extension/`) that grabs the shortcuts and moves windows, the D-Bus side that drives it, displays, freeing GNOME's own shortcuts, start at login |
+| `crates/utwm-linux` | Linux under GNOME: the GNOME Shell extension (`gnome-extension/`) that grabs the shortcuts and moves windows, the D-Bus side that drives it, displays, freeing GNOME's own shortcuts, start at login, and installing under `~/.local` |
 | `apps/desktop` | The Tauri 3 tray app and the command line, one codebase for all three platforms |
 | `tools/bundle` | `utwm-bundle`, which builds the Mac app bundle (`just bundle`), for both architectures with `--universal`, and installs it into /Applications (`just install`), or on Linux lays out and installs the app under `~/.local` |
 | `tools/e2e` | The end-to-end checks (`utwm-e2e`, one per platform), and `utwm-inject`, which presses keys by scan code on Windows the way RustDesk does |
@@ -199,7 +210,7 @@ On Linux it presses the shortcuts through GNOME's remote desktop interface, by k
 
 ### Releases
 
-Commits follow [Conventional Commits](https://www.conventionalcommits.org): `feat:` and `fix:` are what a release is made of, and pull requests are squash-merged, so a pull request's title is its commit. [release-please](https://github.com/googleapis/release-please) keeps a release pull request open with the next version and its CHANGELOG. Merging it runs `.github/workflows/release.yml`, which tags the release, runs CI at the tag, builds the Mac app for both architectures, signs it with the Developer ID and notarizes it, builds the Windows installer, and attaches both to the GitHub release. The updater's `latest.json`, which installed copies read, goes up last, so a release that failed on the way never reaches them. The workflow reads the Developer ID and the updater's signing key from AWS Secrets Manager through GitHub's OIDC, as a role only main can assume (`infra/`, applied by hand).
+Commits follow [Conventional Commits](https://www.conventionalcommits.org): `feat:` and `fix:` are what a release is made of, and pull requests are squash-merged, so a pull request's title is its commit. [release-please](https://github.com/googleapis/release-please) keeps a release pull request open with the next version and its CHANGELOG. Merging it runs `.github/workflows/release.yml`, which tags the release, runs CI at the tag, builds the Mac app for both architectures, signs it with the Developer ID and notarizes it, builds the Windows installer and the Linux executable, and attaches all three to the GitHub release. The updater's `latest.json`, which installed copies read, goes up last, so a release that failed on the way never reaches them. The workflow reads the Developer ID and the updater's signing key from AWS Secrets Manager through GitHub's OIDC, as a role only main can assume (`infra/`, applied by hand).
 
 ## License
 

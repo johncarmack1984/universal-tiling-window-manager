@@ -51,18 +51,15 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
         commands: commands.clone(),
     });
 
-    let builder = tauri::Builder::default()
+    let app = tauri::Builder::default()
         .runtime(tauri_runtime_wry::Wry::default())
         // A second launch exits here, before it registers a second set of
         // shortcuts.
         .plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
             tracing::info!(?argv, "already running; ignoring the second launch");
-        }));
-    // Reads the endpoint and the public key from tauri.conf.json. Linux has
-    // no releases to update from yet.
-    #[cfg(any(windows, target_os = "macos"))]
-    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
-    let app = builder
+        }))
+        // Reads the endpoint and the public key from tauri.conf.json.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             // A menu bar app: no Dock icon and no menu bar of its own.
             #[cfg(target_os = "macos")]
@@ -235,6 +232,9 @@ fn listen(
     // Puts back this app's copy of the extension where the installed files
     // differ, and drops an update GNOME staged for it from elsewhere.
     extension::refresh();
+    // An update replaces only the executable; the desktop entry and icons
+    // catch up here.
+    utwm_linux::install::refresh(crate::platform::ICONS);
     let (shortcuts, refused) =
         Shortcuts::start(chords, controller::shortcuts_reporter(commands.clone()))?;
     let listener = control::Listener::start(controller::control_reporter(commands.clone()))?;

@@ -15,6 +15,7 @@ commands:
   pause                 pause or resume the running instance's shortcuts
   quit                  stop the running instance
   update                make the running instance install the newest release
+  install               put this copy in ~/.local/bin and start it (Linux)
   version               print the version
 
 Configuration lives in ~/.config/universal-tiling-window-manager/config.toml.
@@ -31,6 +32,7 @@ pub enum Command {
     Pause,
     Quit,
     Update,
+    Install,
     Version,
     Help,
 }
@@ -79,6 +81,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Invocation, Strin
         Some("pause") => Command::Pause,
         Some("quit") => Command::Quit,
         Some("update") => Command::Update,
+        Some("install") => Command::Install,
         Some("version") => Command::Version,
         Some("help") => Command::Help,
         Some(other) => return Err(format!("unknown command `{other}`")),
@@ -108,6 +111,15 @@ pub fn run(invocation: Invocation) -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::Check => check(invocation.config),
+        #[cfg(target_os = "linux")]
+        Command::Install => install(),
+        #[cfg(not(target_os = "linux"))]
+        Command::Install => {
+            print_to_terminal(
+                "install is for Linux; the installer installs the app on Windows, and on the Mac it goes in /Applications.",
+            );
+            ExitCode::FAILURE
+        }
         #[cfg(windows)]
         Command::Probe { seconds } => probe(invocation.config, seconds),
         #[cfg(not(windows))]
@@ -159,6 +171,30 @@ fn check(config: Option<PathBuf>) -> ExitCode {
         }
         Err(error) => {
             print_to_terminal(&format!("error: {error}"));
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Installs this copy for the user, as a release's download is installed:
+/// in `~/.local/bin`, with its desktop entry, icons and GNOME Shell
+/// extension, replacing a running copy, and started.
+#[cfg(target_os = "linux")]
+fn install() -> ExitCode {
+    let installed = match std::env::current_exe() {
+        Ok(source) => utwm_linux::install::install(&source, crate::platform::ICONS),
+        Err(error) => Err(error.into()),
+    };
+    match installed {
+        Ok(installed) => {
+            print_to_terminal(&format!("installed {} and started it", installed.display()));
+            if let Some(advice) = utwm_linux::install::advice() {
+                print_to_terminal(advice);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            print_to_terminal(&format!("could not install: {error}"));
             ExitCode::FAILURE
         }
     }
@@ -299,5 +335,14 @@ mod tests {
         assert!(parse_args(&["frobnicate"]).is_err());
         assert!(parse_args(&["quit", "now"]).is_err());
         assert!(parse_args(&["--config"]).is_err());
+    }
+
+    #[test]
+    fn install_takes_nothing() {
+        assert_eq!(
+            parse_args(&["install"]).map(|i| i.command),
+            Ok(Command::Install)
+        );
+        assert!(parse_args(&["install", "/opt"]).is_err());
     }
 }

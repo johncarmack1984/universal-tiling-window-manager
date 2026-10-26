@@ -27,6 +27,15 @@ pub use utwm_linux::shortcuts::Shortcuts;
 #[cfg(target_os = "linux")]
 pub use utwm_linux::{Window, autostart, monitors, window};
 
+/// The icon at each size the Linux install puts one, the same files
+/// `just install` stages.
+#[cfg(target_os = "linux")]
+pub const ICONS: utwm_linux::install::Icons<'static> = &[
+    ("32x32", include_bytes!("../icons/32x32.png")),
+    ("128x128", include_bytes!("../icons/128x128.png")),
+    ("256x256", include_bytes!("../icons/icon.png")),
+];
+
 /// Shows a folder in Explorer, the Finder, or the desktop's file manager.
 pub fn open_folder(folder: &Path) -> std::io::Result<()> {
     let program = if cfg!(windows) {

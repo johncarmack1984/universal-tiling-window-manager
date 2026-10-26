@@ -3,17 +3,20 @@
 //! every six hours after, and whenever the menu or the command line (`update`)
 //! asks. A newer release is downloaded and its signature checked against the
 //! public key in tauri.conf.json. On the Mac it then replaces the bundle this
-//! copy runs from and starts once this copy has quit; on Windows the release's
-//! installer runs in its passive mode, a progress bar with nothing to click,
-//! and starts the app again itself.
+//! copy runs from, and on Linux the executable, and the new copy starts once
+//! this one has quit; on Windows the release's installer runs in its passive
+//! mode, a progress bar with nothing to click, and starts the app again
+//! itself.
 //!
 //! Only a copy installed the way a release installs updates itself. On the
 //! Mac that is a copy running from an app bundle: the updater replaces
 //! whatever holds `Contents/MacOS`, which for `cargo run` would be the build
 //! directory. On Windows it is a copy the installer put in place: one from
 //! `cargo install` would get a second copy beside it, with Start at login
-//! still naming the first. Linux has no releases yet: a copy built from
-//! source updates with `git pull` and `just install`.
+//! still naming the first. On Linux it is the copy in `~/.local/bin`, where
+//! a release's `install` and `just install` put it; the updater replaces
+//! whatever file this copy runs from, which for `cargo run` or `cargo
+//! install` would be a build of someone's own.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -21,7 +24,6 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
-#[cfg(any(windows, target_os = "macos"))]
 use tauri_plugin_updater::UpdaterExt;
 
 use crate::controller::{Command, Shared};
@@ -41,10 +43,6 @@ pub enum State {
     Checking,
     /// A check someone asked for found nothing newer.
     UpToDate,
-    #[cfg_attr(
-        all(target_os = "linux", not(test)),
-        expect(dead_code, reason = "Linux has no releases to install yet")
-    )]
     Installing(String),
     /// A check someone asked for failed; the log says why.
     Failed,
@@ -141,11 +139,15 @@ fn installed_copy(executable: &Path) -> Result<PathBuf, &'static str> {
         .ok_or("no folder above the executable")
 }
 
-/// What a release replaces, when this copy updates itself: nothing yet on
-/// Linux, which has no releases.
+/// What a release replaces, when this copy updates itself: on Linux, the
+/// executable in `~/.local/bin`.
 #[cfg(target_os = "linux")]
-fn installed_copy(_executable: &Path) -> Result<PathBuf, &'static str> {
-    Err("built from source, which `just install` updates")
+fn installed_copy(executable: &Path) -> Result<PathBuf, &'static str> {
+    if utwm_linux::install::is_installed_copy(executable) {
+        Ok(executable.to_path_buf())
+    } else {
+        Err("not the copy installed in ~/.local/bin")
+    }
 }
 
 /// The bundle holding `executable`, which is `X.app/Contents/MacOS/<name>`.
@@ -208,7 +210,6 @@ fn run(
 
 /// Installs the latest release in place of this copy when it is newer.
 /// Returns the version installed.
-#[cfg(any(windows, target_os = "macos"))]
 async fn install_newer(
     app: &tauri::AppHandle,
     executable: &Path,
@@ -231,16 +232,6 @@ async fn install_newer(
     let _ = report.send(Command::Updates(State::Installing(update.version.clone())));
     update.download_and_install(|_, _| {}, || {}).await?;
     Ok(Some(update.version))
-}
-
-/// Linux has no releases to install; `start` never gets this far there.
-#[cfg(target_os = "linux")]
-async fn install_newer(
-    _app: &tauri::AppHandle,
-    _executable: &Path,
-    _report: &Sender<Command>,
-) -> Result<Option<String>, BoxError> {
-    Err("there are no Linux releases to install".into())
 }
 
 /// Opens `bundle` again once this process has exited: a new copy can't start
@@ -267,10 +258,28 @@ fn restart_after_exit(_installed: &Path) -> bool {
     true
 }
 
-/// Never reached: nothing installs a release on Linux.
+/// Starts `executable` again once this process has exited: a new copy can't
+/// start while this one holds the single-instance lock and the control
+/// socket. It runs in a process group of its own, as `install` starts one.
 #[cfg(target_os = "linux")]
-fn restart_after_exit(_installed: &Path) -> bool {
-    false
+fn restart_after_exit(executable: &Path) -> bool {
+    use std::os::unix::process::CommandExt;
+    use std::process::Stdio;
+
+    let script = r#"while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; exec "$2""#;
+    let spawned = std::process::Command::new("/bin/sh")
+        .args(["-c", script, "relaunch"])
+        .arg(std::process::id().to_string())
+        .arg(executable)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn();
+    if let Err(error) = &spawned {
+        tracing::warn!(%error, "could not arrange the restart; the update applies at the next launch");
+    }
+    spawned.is_ok()
 }
 
 #[cfg(test)]
