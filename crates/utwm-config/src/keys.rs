@@ -47,6 +47,11 @@ impl PhysicalKey {
         !self.extended && matches!(self.scan, 0x45 | 0x3A | 0x46)
     }
 
+    /// F1 to F20.
+    pub fn is_function_key(self) -> bool {
+        !self.extended && matches!(self.scan, 0x3B..=0x44 | 0x57 | 0x58 | 0x64..=0x6B)
+    }
+
     /// Ctrl, Shift, Alt and Win on either side.
     pub fn is_modifier(self) -> bool {
         matches!(
@@ -551,6 +556,17 @@ mod tests {
             assert_eq!(PhysicalKey::from_evdev(code), Some(key), "{name}");
         }
         assert_eq!(PhysicalKey::from_evdev(84), None);
+    }
+
+    #[test]
+    fn the_function_keys_are_f1_to_f20() {
+        let function_keys: Vec<&str> = WIN_NAMES
+            .iter()
+            .filter(|(key, _)| key.is_function_key())
+            .map(|(_, name)| *name)
+            .collect();
+        let expected: Vec<String> = (1..=20).map(|n| format!("F{n}")).collect();
+        assert_eq!(function_keys, expected);
     }
 
     #[test]

@@ -401,6 +401,9 @@ impl<'a> Keyboard<'a> {
             Platform::Windows | Platform::Linux if chord.key.is_lock_key() => {
                 Some("lock keys are never bound")
             }
+            Platform::Linux if chord.is_typing() => {
+                Some("on Linux a shortcut needs Ctrl, Alt or Super, or an F-key")
+            }
             Platform::Mac if chord.to_mac().is_none() => {
                 Some("a Mac keyboard has no key in that position")
             }
@@ -722,6 +725,34 @@ mod tests {
         assert_eq!(
             chords,
             ["Ctrl+Alt+Left", "Ctrl+Alt+Enter", "Ctrl+Alt+Backspace"]
+        );
+    }
+
+    #[test]
+    fn linux_keeps_the_exports_chord_over_typing() {
+        let overrides = Overrides::parse(
+            "[linux.shortcuts]\ncenter = \"shift+c\"\nmaximize = \"f5\"",
+            Path::new("config.toml"),
+        )
+        .expect("parses");
+        let shortcuts = export(
+            r#""center": { "keyCode": 8, "modifierFlags": 786432 },
+               "maximize": { "keyCode": 36, "modifierFlags": 786432 }"#,
+            "",
+        );
+        let linux = resolve(&shortcuts, &overrides, Source::builtin(), Platform::Linux);
+        let mut labels: Vec<String> = linux
+            .bindings
+            .iter()
+            .map(|binding| binding.chord.label(Platform::Linux))
+            .collect();
+        labels.sort();
+        assert_eq!(labels, ["Ctrl+Alt+C", "F5"]);
+        assert_eq!(linux.warnings.len(), 1, "{:?}", linux.warnings);
+        assert!(
+            linux.warnings[0].contains("Shift+C"),
+            "{}",
+            linux.warnings[0]
         );
     }
 

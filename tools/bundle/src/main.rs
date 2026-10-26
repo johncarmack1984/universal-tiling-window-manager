@@ -17,9 +17,10 @@
 //! keeps the grant across installs.
 //!
 //! On Linux it stages the release executable with a desktop entry and icons in
-//! `target/release/bundle/linux`. With `--install` it puts them under
-//! `~/.local`, quitting a running copy first, installs the GNOME Shell
-//! extension the app works through, and starts the new copy.
+//! `target/release/bundle/linux`. With `--install` it puts the executable in
+//! `~/.local/bin` and the rest in `$XDG_DATA_HOME` (`~/.local/share` by
+//! default), quitting a running copy first, installs the GNOME Shell extension
+//! the app works through, and starts the new copy.
 
 #[cfg(target_os = "linux")]
 mod linux;

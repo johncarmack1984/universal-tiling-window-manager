@@ -219,10 +219,18 @@ fn checks(config: &Resolved) -> bool {
                 continue;
             }
         };
+        let (shortcut, name) = (chord.label(Platform::Linux), action.name());
+        // A shortcut moves whichever window has the focus, so each press
+        // waits on the test window still having it.
+        if window::focused() != Some(window) {
+            println!(
+                "FAIL the test window lost the focus; stopping before {shortcut} moves another window"
+            );
+            return false;
+        }
         keyboard.press(chord);
         let landed = settle(window, before, planned.rect);
         engine.landed(&(), &planned, landed);
-        let (shortcut, name) = (chord.label(Platform::Linux), action.name());
         if landed == planned.rect {
             println!("ok   {shortcut:<22} {name:<18} {landed}");
         } else {
@@ -357,6 +365,8 @@ show-desktop=@as []
 /// `--headless`: makes a throwaway home for a test session and runs this
 /// check again inside it, outside the login session, on a bus of its own.
 fn headless() -> ExitCode {
+    use std::os::unix::fs::DirBuilderExt;
+
     let Ok(this) = std::env::current_exe() else {
         eprintln!("can't tell where utwm-e2e is");
         return ExitCode::FAILURE;
@@ -370,6 +380,12 @@ fn headless() -> ExitCode {
         return ExitCode::FAILURE;
     };
     let root = std::env::temp_dir().join(format!("utwm-e2e-{}", std::process::id()));
+    // Made new, for this user alone: a folder someone else made first could
+    // hand the test session their own settings and extensions.
+    if let Err(error) = std::fs::DirBuilder::new().mode(0o700).create(&root) {
+        eprintln!("could not make {}: {error}", root.display());
+        return ExitCode::FAILURE;
+    }
     let result = prepare(&root).and_then(|()| {
         let mut command = Command::new("systemd-run");
         command
@@ -390,7 +406,7 @@ fn headless() -> ExitCode {
     });
     match result {
         Ok(status) if status.success() => {
-            let _ = std::fs::remove_dir_all(&root);
+            remove(&root);
             ExitCode::SUCCESS
         }
         Ok(_) => {
@@ -402,9 +418,27 @@ fn headless() -> ExitCode {
         }
         Err(error) => {
             eprintln!("could not start the test session: {error}");
-            let _ = std::fs::remove_dir_all(&root);
+            remove(&root);
             ExitCode::FAILURE
         }
+    }
+}
+
+/// Deletes the test session's folder. Its services outlive the session by a
+/// moment, the document portal's mount in `runtime/doc` among them, so this
+/// tries again until they have let go.
+fn remove(root: &Path) {
+    let removed = wait_for(Duration::from_secs(10), || {
+        match std::fs::remove_dir_all(root) {
+            Ok(()) => true,
+            Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+        }
+    });
+    if !removed {
+        eprintln!(
+            "couldn't delete the test session's files in {}",
+            root.display()
+        );
     }
 }
 

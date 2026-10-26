@@ -248,6 +248,16 @@ impl Chord {
         }
     }
 
+    /// Whether the chord is ordinary typing: no Ctrl, Alt or Win, and not an
+    /// F-key, as Shift+A or a bare arrow is. Linux never binds one, since its
+    /// GNOME Shell extension won't grab the keys people type with.
+    pub fn is_typing(self) -> bool {
+        !(self.modifiers.ctrl
+            || self.modifiers.alt
+            || self.modifiers.win
+            || self.key.is_function_key())
+    }
+
     /// The same chord on a Mac keyboard: the macOS key code in this position,
     /// with Control, Option, Shift and Command for Ctrl, Alt, Shift and Win.
     /// `None` for keys a Mac keyboard doesn't have.
@@ -395,6 +405,29 @@ mod tests {
         assert_eq!(next.label(Platform::Mac), "⌃⌥⌘→");
         let menu = Chord::parse("ctrl+menu").expect("parses");
         assert_eq!(menu.label(Platform::Mac), "Ctrl+Menu");
+    }
+
+    #[test]
+    fn typing_is_a_chord_without_ctrl_alt_or_win_on_a_key_other_than_f() {
+        for typing in ["a", "shift+a", "left", "shift+enter", "num7"] {
+            assert!(
+                Chord::parse(typing).expect("parses").is_typing(),
+                "{typing}"
+            );
+        }
+        for shortcut in [
+            "ctrl+a",
+            "alt+left",
+            "win+shift+a",
+            "f5",
+            "shift+f13",
+            "f20",
+        ] {
+            assert!(
+                !Chord::parse(shortcut).expect("parses").is_typing(),
+                "{shortcut}"
+            );
+        }
     }
 
     #[test]

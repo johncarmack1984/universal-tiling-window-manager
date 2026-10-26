@@ -26,8 +26,19 @@ pub mod shortcuts;
 pub mod tray_host;
 pub mod window;
 
+use std::path::PathBuf;
+
 pub use window::Window;
 
 /// The app's identifier, which names its desktop entry, its icon and its
 /// autostart entry, as it names the Mac's bundle.
 pub const APP_ID: &str = "com.johncarmack.universal-tiling-window-manager";
+
+/// `$XDG_DATA_HOME`, or `~/.local/share`: where GNOME looks for this user's
+/// extensions, desktop entries and icons.
+pub fn data_home() -> Option<PathBuf> {
+    std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| std::env::home_dir().map(|home| home.join(".local").join("share")))
+}

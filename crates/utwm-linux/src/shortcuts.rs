@@ -47,6 +47,10 @@ const SESSION_MANAGER: &str = "org.gnome.SessionManager";
 const MEDIA_KEYS_WAIT: Duration = Duration::from_secs(5);
 const MEDIA_KEYS_GRACE: Duration = Duration::from_secs(1);
 
+/// The most bindings the extension takes in one set. It refuses a larger set
+/// whole, so the rest are refused here instead.
+pub(crate) const MAX_BINDINGS: usize = 200;
+
 struct State {
     chords: Vec<Chord>,
     paused: bool,
@@ -56,6 +60,8 @@ struct State {
     generation: u32,
     /// For each accelerator sent, in order, its index into `chords`.
     sent: Vec<usize>,
+    /// The chords the extension said it took, from the last set sent.
+    held: Vec<Chord>,
 }
 
 /// The shortcuts. Its methods may be called from any thread.
@@ -74,6 +80,7 @@ impl Shortcuts {
             paused: false,
             generation: 0,
             sent: Vec::new(),
+            held: Vec::new(),
         }));
         let report = Arc::new(report);
         let listener_state = Arc::clone(&state);
@@ -104,6 +111,15 @@ impl Shortcuts {
         self.register()
     }
 
+    /// The chords the extension took for this app, as of the last bindings
+    /// sent: none while paused, or while the extension is away.
+    pub fn held(&self) -> Vec<Chord> {
+        self.state
+            .lock()
+            .map(|state| state.held.clone())
+            .unwrap_or_default()
+    }
+
     /// Sends the bindings to the extension. Returns the chords refused.
     fn register(&self) -> Vec<Chord> {
         let Ok(mut state) = self.state.lock() else {
@@ -120,25 +136,33 @@ impl Shortcuts {
         let mut accelerators = Vec::new();
         for (index, chord) in chords.iter().enumerate() {
             match accelerator(*chord) {
-                Some(accelerator) => {
+                Some(accelerator) if accelerators.len() < MAX_BINDINGS => {
                     sent.push(index);
                     accelerators.push(accelerator);
                 }
-                None => refused.push(*chord),
+                _ => refused.push(*chord),
             }
         }
         state.sent.clone_from(&sent);
+        state.held.clear();
         let generation = state.generation;
         drop(state);
 
         let sent_chords = sent.iter().filter_map(|index| chords.get(*index).copied());
         match shell::set_bindings(generation, &accelerators) {
-            Ok(grabbed) => refused.extend(
-                sent_chords
-                    .zip(grabbed)
-                    .filter(|(_, grabbed)| !grabbed)
-                    .map(|(chord, _)| chord),
-            ),
+            Ok(grabbed) => {
+                let mut held = Vec::new();
+                for (chord, grabbed) in sent_chords.zip(grabbed) {
+                    if grabbed {
+                        held.push(chord);
+                    } else {
+                        refused.push(chord);
+                    }
+                }
+                if let Ok(mut state) = self.state.lock() {
+                    state.held = held;
+                }
+            }
             // Nothing grabs until the extension is there; the menu says why.
             Err(CallError::Unavailable) => {}
             Err(error) => {
@@ -158,8 +182,13 @@ pub fn release() {
 
 /// What the extension grabs for `chord`: its modifiers as Mutter names them,
 /// then its key's XKB keycode (Linux's code plus 8), so the binding stays on
-/// that key whatever the layout. `None` for a key Linux has no code for.
+/// that key whatever the layout. `None` for a key Linux has no code for, and
+/// for typing, which the extension won't grab: one such chord in a set would
+/// have it refuse the whole set.
 fn accelerator(chord: Chord) -> Option<String> {
+    if chord.is_typing() {
+        return None;
+    }
     let keycode = chord.key.evdev()? + 8;
     let modifiers = chord.modifiers;
     let mut accelerator = String::new();
@@ -305,5 +334,14 @@ mod tests {
             accelerator_for("ctrl+alt+home").as_deref(),
             Some("<Control><Alt>0x6e")
         );
+    }
+
+    #[test]
+    fn typing_is_never_sent() {
+        for typing in ["a", "shift+a", "left", "shift+enter"] {
+            assert_eq!(accelerator_for(typing), None, "{typing}");
+        }
+        assert_eq!(accelerator_for("f5").as_deref(), Some("0x47"));
+        assert_eq!(accelerator_for("shift+f13").as_deref(), Some("<Shift>0xbf"));
     }
 }

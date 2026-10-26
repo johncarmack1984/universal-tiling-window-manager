@@ -1,8 +1,8 @@
 //! The Linux install: the release executable in `~/.local/bin`, and a desktop
-//! entry and icons under `~/.local/share`, so GNOME lists the app and starts
-//! it like any other, plus the GNOME Shell extension the app works through.
-//! Everything is staged first in `target/release/bundle/linux`, laid out as
-//! it is installed.
+//! entry and icons in GNOME's data folder (`$XDG_DATA_HOME`, `~/.local/share`
+//! by default), so GNOME lists the app and starts it like any other, plus the
+//! GNOME Shell extension the app works through. Everything is staged first in
+//! `target/release/bundle/linux`, `bin` and `share` laid out as installed.
 
 use std::error::Error;
 use std::os::unix::process::CommandExt;
@@ -70,7 +70,8 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         std::env::var_os("CARGO_TARGET_DIR").map_or_else(|| root.join("target"), PathBuf::from);
     let release = target.join("release");
     let staged = release.join("bundle").join("linux");
-    let installed_executable = home.join(".local").join("bin").join(EXECUTABLE);
+    let bin = home.join(".local").join("bin");
+    let installed_executable = bin.join(EXECUTABLE);
     stage(
         &staged,
         &release.join(EXECUTABLE),
@@ -81,7 +82,8 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     println!("built {}", staged.display());
 
     if install {
-        install_files(&staged, &home.join(".local"))?;
+        let share = utwm_linux::data_home().ok_or("no home directory")?;
+        install_files(&staged, &bin, &share)?;
         extension::install()?;
         start(&installed_executable)?;
         println!(
@@ -104,8 +106,9 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     Ok(())
 }
 
-/// Lays out what installing puts under `~/.local`: `bin`, the desktop entry
-/// in `share/applications`, and the icons in `share/icons/hicolor`.
+/// Lays out what installing puts in place: the executable in `bin`, and in
+/// `share` the desktop entry (`applications`) and the icons
+/// (`icons/hicolor`).
 fn stage(
     staged: &Path,
     executable: &Path,
@@ -164,10 +167,10 @@ X-GNOME-UsesNotifications=true
     )
 }
 
-/// Copies the staged files under `local`, quitting a running copy first.
-/// Each file goes through a temporary name and a rename, so nothing ever sees
-/// half a file.
-fn install_files(staged: &Path, local: &Path) -> Result<()> {
+/// Copies the staged `bin` into `bin` and the staged `share` into `share`,
+/// quitting a running copy first. Each file goes through a temporary name and
+/// a rename, so nothing ever sees half a file.
+fn install_files(staged: &Path, bin: &Path, share: &Path) -> Result<()> {
     if control::send_control(Control::Quit) {
         let deadline = Instant::now() + Duration::from_secs(10);
         while control::is_running() {
@@ -177,19 +180,21 @@ fn install_files(staged: &Path, local: &Path) -> Result<()> {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
-    for file in files(staged)? {
-        let relative = file.strip_prefix(staged)?;
-        let destination = local.join(relative);
-        let folder = destination
-            .parent()
-            .ok_or("an installed file has no folder")?;
-        std::fs::create_dir_all(folder)?;
-        let temporary = folder.join(format!(
-            ".{}.new",
-            relative.file_name().unwrap_or_default().to_string_lossy()
-        ));
-        std::fs::copy(&file, &temporary)?;
-        std::fs::rename(&temporary, &destination)?;
+    for (from, to) in [(staged.join("bin"), bin), (staged.join("share"), share)] {
+        for file in files(&from)? {
+            let relative = file.strip_prefix(&from)?;
+            let destination = to.join(relative);
+            let folder = destination
+                .parent()
+                .ok_or("an installed file has no folder")?;
+            std::fs::create_dir_all(folder)?;
+            let temporary = folder.join(format!(
+                ".{}.new",
+                relative.file_name().unwrap_or_default().to_string_lossy()
+            ));
+            std::fs::copy(&file, &temporary)?;
+            std::fs::rename(&temporary, &destination)?;
+        }
     }
     Ok(())
 }

@@ -116,7 +116,8 @@ leftHalf = "ctrl+option+h"
 ignored_apps = ["org.gnome.Terminal"]
 
 # Rebind an action on Linux only, or unbind it with "". Keys are named as for
-# Windows, and super is the Super key.
+# Windows, super is the Super key, and a shortcut needs ctrl, alt or super
+# unless its key is F1 to F20.
 [linux.shortcuts]
 lastTwoThirds = "ctrl+alt+super+t"
 ```

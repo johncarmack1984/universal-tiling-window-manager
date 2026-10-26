@@ -122,12 +122,16 @@ pub(crate) fn owner(connection: &Connection, name: &str) -> Option<String> {
 
 /// A proxy for `interface` at `path` on `destination`, reading properties
 /// fresh every time.
-pub(crate) fn proxy(
+pub(crate) fn proxy<D>(
     connection: &Connection,
-    destination: &'static str,
+    destination: D,
     path: &'static str,
     interface: &'static str,
-) -> zbus::Result<Proxy<'static>> {
+) -> zbus::Result<Proxy<'static>>
+where
+    D: TryInto<BusName<'static>>,
+    D::Error: Into<zbus::Error>,
+{
     zbus::blocking::proxy::Builder::<Proxy<'static>>::new(connection)
         .destination(destination)?
         .path(path)?
@@ -136,7 +140,9 @@ pub(crate) fn proxy(
         .build()
 }
 
-/// The bridge, if the extension is running inside GNOME Shell.
+/// The bridge, if the extension is running inside GNOME Shell. Calls go to
+/// GNOME Shell's own connection rather than to the extension's name, which
+/// could change hands between this check and the call.
 pub(crate) fn bridge() -> Result<Proxy<'static>> {
     let connection = connection().ok_or(CallError::Unavailable)?;
     let held_by = owner(connection, BUS_NAME).ok_or(CallError::Unavailable)?;
@@ -147,7 +153,7 @@ pub(crate) fn bridge() -> Result<Proxy<'static>> {
         );
         return Err(CallError::Unavailable);
     }
-    Ok(proxy(connection, BUS_NAME, OBJECT_PATH, INTERFACE)?)
+    Ok(proxy(connection, held_by, OBJECT_PATH, INTERFACE)?)
 }
 
 pub(crate) fn api_version() -> Result<u32> {

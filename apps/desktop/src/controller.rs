@@ -702,23 +702,34 @@ impl Controller {
         freeing
     }
 
+    /// A key freed from GNOME stays freed only if the extension says it holds
+    /// it now. Any other goes back to GNOME: one the extension still couldn't
+    /// take, or one it wasn't asked for because shortcuts were paused, the
+    /// extension was away, or a reload dropped the chord.
     #[cfg(target_os = "linux")]
     fn check_freed(&mut self) {
         let refused = self.shortcuts.set_bindings(self.chords());
+        let held = self.shortcuts.held();
         let unhelped: Vec<utwm_linux::conflicts::Holder> = std::mem::take(&mut self.freed)
             .into_iter()
-            .filter(|holder| refused.contains(&holder.chord))
+            .filter(|holder| !held.contains(&holder.chord))
             .collect();
         if !unhelped.is_empty() {
             tracing::warn!(
                 count = unhelped.len(),
-                "freeing GNOME's shortcuts didn't free these keys; giving them back"
+                "the app doesn't hold these keys GNOME let go of; giving them back"
             );
             if let Err(error) = utwm_linux::conflicts::restore(&unhelped) {
                 tracing::warn!(%error, "could not give GNOME its shortcuts back");
             }
-            self.unfreeable
-                .extend(unhelped.iter().map(|holder| holder.chord));
+            // Only a key still refused once GNOME let go is one freeing can't
+            // free, which the menu stops offering.
+            self.unfreeable.extend(
+                unhelped
+                    .iter()
+                    .map(|holder| holder.chord)
+                    .filter(|chord| refused.contains(chord)),
+            );
         }
         self.set_refused(refused);
         self.refresh_tray();

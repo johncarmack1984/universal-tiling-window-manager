@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use zbus::zvariant::OwnedValue;
 
-use crate::{gsettings, shell};
+use crate::{data_home, gsettings, shell};
 
 /// The extension's id, after the app's identifier.
 pub const UUID: &str = "universal-tiling-window-manager@johncarmack.com";
@@ -220,14 +220,6 @@ pub fn log_out() -> std::io::Result<()> {
     .map_err(std::io::Error::other)
 }
 
-/// `$XDG_DATA_HOME`, or `~/.local/share`.
-fn data_home() -> Option<PathBuf> {
-    std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute())
-        .or_else(|| std::env::home_dir().map(|home| home.join(".local").join("share")))
-}
-
 /// Where GNOME Shell looks for this user's copy.
 pub fn directory() -> Option<PathBuf> {
     data_home().map(|data| data.join("gnome-shell").join("extensions").join(UUID))
@@ -346,6 +338,36 @@ mod tests {
             assert!(
                 EXTENSION_JS.contains(name),
                 "extension.js doesn't name {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_extension_takes_every_set_of_bindings_the_app_sends() {
+        // It refuses a set whole when the set is too big or holds one chord
+        // it won't grab.
+        assert!(
+            EXTENSION_JS.contains(&format!(
+                "const MAX_BINDINGS = {};",
+                crate::shortcuts::MAX_BINDINGS
+            )),
+            "MAX_BINDINGS differs between extension.js and shortcuts.rs"
+        );
+        let function_keys: Vec<u16> = EXTENSION_JS
+            .split_once("const FUNCTION_KEYS = new Set([")
+            .and_then(|(_, rest)| rest.split_once("])"))
+            .expect("extension.js lists FUNCTION_KEYS")
+            .0
+            .split(',')
+            .filter_map(|code| code.trim().parse().ok())
+            .collect();
+        for n in 1..=20 {
+            let key =
+                utwm_config::PhysicalKey::from_windows_name(&format!("F{n}")).expect("an F-key");
+            let keycode = key.evdev().expect("a Linux code") + 8;
+            assert!(
+                function_keys.contains(&keycode),
+                "extension.js doesn't take F{n} (keycode {keycode}) on its own"
             );
         }
     }
