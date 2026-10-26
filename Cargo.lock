@@ -4419,6 +4419,7 @@ dependencies = [
  "tracing-subscriber",
  "utwm-config",
  "utwm-layout",
+ "utwm-linux",
  "utwm-macos",
  "utwm-windows",
 ]
@@ -4460,6 +4461,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "utwm-linux",
  "utwm-macos",
 ]
 
@@ -4483,11 +4485,14 @@ dependencies = [
  "objc2-app-kit",
  "objc2-core-graphics",
  "objc2-foundation",
+ "tao",
  "utwm-config",
  "utwm-layout",
+ "utwm-linux",
  "utwm-macos",
  "utwm-windows",
  "windows-sys 0.61.2",
+ "zbus",
 ]
 
 [[package]]
@@ -4496,6 +4501,18 @@ version = "0.1.0"
 dependencies = [
  "insta",
  "utwm-config",
+]
+
+[[package]]
+name = "utwm-linux"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tracing",
+ "utwm-config",
+ "utwm-layout",
+ "zbus",
 ]
 
 [[package]]

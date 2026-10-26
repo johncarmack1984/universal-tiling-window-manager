@@ -8,7 +8,7 @@ use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem,
 use tauri::tray::TrayIconBuilder;
 use utwm_config::actions::{self, ActionName};
 use utwm_config::bindings::Resolved;
-use utwm_config::{ActionId, Chord, MenuGroup, Target};
+use utwm_config::{ActionId, Chord, MenuGroup, Platform, Target};
 
 use crate::controller::Command;
 use crate::platform;
@@ -20,16 +20,17 @@ const TRAY_ID: &str = "universal-tiling-window-manager";
 /// The menu's first line.
 pub struct Status {
     pub text: String,
-    /// Whether clicking it opens System Settings at Accessibility, for a Mac
-    /// that hasn't granted access yet.
-    pub opens_access_settings: bool,
+    /// Whether clicking it takes the step it describes: asking for
+    /// Accessibility access on the Mac, or on Linux setting up the GNOME Shell
+    /// extension or freeing GNOME's shortcuts.
+    pub clickable: bool,
 }
 
 impl Status {
     pub fn plain(text: String) -> Self {
         Self {
             text,
-            opens_access_settings: false,
+            clickable: false,
         }
     }
 }
@@ -65,13 +66,9 @@ pub fn status_line(config: &Resolved, error: Option<&str>, refused: usize) -> St
 }
 
 /// A chord the way this platform's keyboard labels it: `Ctrl+Alt+Left` on
-/// Windows, `⌃⌥←` on the Mac.
+/// Windows and Linux, `⌃⌥←` on the Mac.
 pub fn chord_label(chord: Chord) -> String {
-    #[cfg(target_os = "macos")]
-    if let Some(mac) = chord.to_mac() {
-        return mac.to_string();
-    }
-    chord.to_string()
+    chord.label(Platform::current())
 }
 
 /// The app's name (`productName`) and what it is doing.
@@ -129,6 +126,8 @@ pub fn refresh(
     Ok(())
 }
 
+/// GNOME's tray never shows tooltips, so Linux notifies instead.
+#[cfg(not(target_os = "linux"))]
 pub fn set_tooltip(app: &tauri::AppHandle, message: &str) {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         // Tooltips are capped at 127 characters by the shell.
@@ -152,8 +151,8 @@ fn command_for(id: &str) -> Option<Command> {
         "reload" => Some(Command::Reload),
         "open-config" => Some(Command::OpenConfigFolder),
         "autostart" => Some(Command::ToggleAutostart),
-        #[cfg(target_os = "macos")]
-        "access" => Some(Command::OpenAccessSettings),
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        "status" => Some(Command::FixStatus),
         "update" => Some(Command::CheckForUpdates),
         "quit" => Some(Command::Quit),
         _ => None,
@@ -180,9 +179,10 @@ fn append_action(
         }
     }
     let text = match chord {
-        Some(chord) if cfg!(target_os = "macos") => format!("{label} ({})", chord_label(chord)),
         // Windows right-aligns what follows a tab, as menus show accelerators.
-        Some(chord) => format!("{label}\t{}", chord_label(chord)),
+        Some(chord) if cfg!(windows) => format!("{label}\t{}", chord_label(chord)),
+        // GNOME's tray draws a tab as plain space and shows no accelerators.
+        Some(chord) => format!("{label} ({})", chord_label(chord)),
         None => label.to_owned(),
     };
     submenu.append(&MenuItem::with_id(app, id, text, true, None::<&str>)?)
@@ -252,16 +252,11 @@ fn build_menu(
     updates: Option<&UpdatesLine>,
 ) -> tauri::Result<Menu<R>> {
     let menu = Menu::new(app)?;
-    let status_id = if status.opens_access_settings {
-        "access"
-    } else {
-        "status"
-    };
     menu.append(&MenuItem::with_id(
         app,
-        status_id,
+        "status",
         &status.text,
-        status.opens_access_settings,
+        status.clickable,
         None::<&str>,
     )?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;

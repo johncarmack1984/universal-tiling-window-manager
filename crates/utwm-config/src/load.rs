@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn the_builtin_set_binds_everything() {
-        for platform in [Platform::Windows, Platform::Mac] {
+        for platform in [Platform::Windows, Platform::Mac, Platform::Linux] {
             let resolved = bindings::resolve(
                 &builtin_export(),
                 &Overrides::default(),

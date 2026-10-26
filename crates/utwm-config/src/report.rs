@@ -20,7 +20,7 @@ pub fn render(resolved: &Resolved) -> String {
 
     line(format!("Bindings ({} chords):", resolved.bindings.len()));
     match resolved.platform {
-        Platform::Windows => {
+        Platform::Windows | Platform::Linux => {
             let rows: Vec<[String; 3]> = resolved
                 .bindings
                 .iter()
@@ -29,8 +29,11 @@ pub fn render(resolved: &Resolved) -> String {
                         .entries
                         .iter()
                         .find_map(|entry| entry.mac)
-                        .map_or_else(|| "(Windows only)".to_owned(), |mac| mac.to_string());
-                    [mac, binding.chord.to_string(), action(binding)]
+                        .map_or_else(
+                            || format!("({} only)", resolved.platform),
+                            |mac| mac.to_string(),
+                        );
+                    [mac, binding.chord.label(resolved.platform), action(binding)]
                 })
                 .collect();
             let widths = column_widths(&rows);

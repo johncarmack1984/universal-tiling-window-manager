@@ -1,7 +1,8 @@
-//! The platform crate this build drives. `utwm-windows` and `utwm-macos`
-//! expose the same names for what the tray app needs (a window handle, the
-//! window functions, the displays, start at login, the shortcut listener and
-//! the command line's requests), so the rest of the app is written once.
+//! The platform crate this build drives. `utwm-windows`, `utwm-macos` and
+//! `utwm-linux` expose the same names for what the tray app needs (a window
+//! handle, the window functions, the displays, start at login, the shortcut
+//! listener and the command line's requests), so the rest of the app is
+//! written once.
 
 use std::path::Path;
 
@@ -19,12 +20,21 @@ pub use utwm_macos::hotkeys::Hotkeys as Shortcuts;
 #[cfg(target_os = "macos")]
 pub use utwm_macos::{Window, autostart, monitors, window};
 
-/// Shows a folder in Explorer, or in the Finder.
+#[cfg(target_os = "linux")]
+pub use utwm_linux::control::{Control, send_control};
+#[cfg(target_os = "linux")]
+pub use utwm_linux::shortcuts::Shortcuts;
+#[cfg(target_os = "linux")]
+pub use utwm_linux::{Window, autostart, monitors, window};
+
+/// Shows a folder in Explorer, the Finder, or the desktop's file manager.
 pub fn open_folder(folder: &Path) -> std::io::Result<()> {
     let program = if cfg!(windows) {
         "explorer.exe"
-    } else {
+    } else if cfg!(target_os = "macos") {
         "open"
+    } else {
+        "xdg-open"
     };
     std::process::Command::new(program)
         .arg(folder)

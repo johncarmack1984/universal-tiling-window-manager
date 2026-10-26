@@ -9,7 +9,9 @@
 //! this machine over RustDesk actually delivers.
 //!
 //! No two macOS key codes share a position, so the table also runs backwards:
-//! the Mac registers a chord by the key code in that position.
+//! the Mac registers a chord by the key code in that position. Linux names
+//! positions by input event code, which for the main block is the set-1 make
+//! code itself.
 
 use std::fmt;
 
@@ -45,6 +47,11 @@ impl PhysicalKey {
         !self.extended && matches!(self.scan, 0x45 | 0x3A | 0x46)
     }
 
+    /// F1 to F20.
+    pub fn is_function_key(self) -> bool {
+        !self.extended && matches!(self.scan, 0x3B..=0x44 | 0x57 | 0x58 | 0x64..=0x6B)
+    }
+
     /// Ctrl, Shift, Alt and Win on either side.
     pub fn is_modifier(self) -> bool {
         matches!(
@@ -59,6 +66,39 @@ impl PhysicalKey {
             .iter()
             .find(|(key, _)| *key == self)
             .map_or("?", |(_, name)| name)
+    }
+
+    /// The Linux input event code in this position (`KEY_*` in
+    /// `linux/input-event-codes.h`), if Linux has one. The main block's codes
+    /// are the set-1 make codes; the rest differ. An XKB keycode, which
+    /// GNOME's accelerators take, is this plus 8.
+    pub fn evdev(self) -> Option<u16> {
+        if self.extended {
+            return EVDEV_EXTENDED
+                .iter()
+                .find(|(scan, _)| *scan == self.scan)
+                .map(|(_, code)| *code);
+        }
+        match self.scan {
+            0x01..=0x53 | 0x56..=0x58 => Some(self.scan),
+            0x59 => Some(117),
+            // F13 to F20.
+            0x64..=0x6B => Some(self.scan - 0x64 + 183),
+            0x73 => Some(89),
+            0x79 => Some(92),
+            0x7B => Some(94),
+            0x7D => Some(124),
+            0x7E => Some(121),
+            _ => None,
+        }
+    }
+
+    /// The key in the position Linux calls `code`, if this table names one.
+    pub fn from_evdev(code: u16) -> Option<Self> {
+        WIN_NAMES
+            .iter()
+            .map(|(key, _)| *key)
+            .find(|key| key.evdev() == Some(code))
     }
 
     /// Looks a key up by the name `windows_name` gives it, ignoring case, plus a
@@ -243,6 +283,30 @@ const MAC_KEYS: &[(u16, PhysicalKey, &str)] = &[
     (0x7C, e(0x4D), "→"),
     (0x7D, e(0x50), "↓"),
     (0x7E, e(0x48), "↑"),
+];
+
+/// Extended (E0) scan code, Linux input event code.
+const EVDEV_EXTENDED: &[(u16, u16)] = &[
+    (0x1C, 96),  // KEY_KPENTER
+    (0x1D, 97),  // KEY_RIGHTCTRL
+    (0x20, 113), // KEY_MUTE
+    (0x2E, 114), // KEY_VOLUMEDOWN
+    (0x30, 115), // KEY_VOLUMEUP
+    (0x35, 98),  // KEY_KPSLASH
+    (0x38, 100), // KEY_RIGHTALT
+    (0x47, 102), // KEY_HOME
+    (0x48, 103), // KEY_UP
+    (0x49, 104), // KEY_PAGEUP
+    (0x4B, 105), // KEY_LEFT
+    (0x4D, 106), // KEY_RIGHT
+    (0x4F, 107), // KEY_END
+    (0x50, 108), // KEY_DOWN
+    (0x51, 109), // KEY_PAGEDOWN
+    (0x52, 110), // KEY_INSERT
+    (0x53, 111), // KEY_DELETE
+    (0x5B, 125), // KEY_LEFTMETA
+    (0x5C, 126), // KEY_RIGHTMETA
+    (0x5D, 127), // KEY_COMPOSE, the Menu key
 ];
 
 /// Every key this table can name on the Windows side.
@@ -453,6 +517,56 @@ mod tests {
         }
         assert_eq!(PhysicalKey::from_windows_name("numpad7"), Some(k(0x47)));
         assert_eq!(PhysicalKey::from_windows_name("LEFT"), Some(e(0x4B)));
+    }
+
+    #[test]
+    fn every_named_key_has_its_own_linux_code() {
+        let mut codes = Vec::new();
+        for (key, name) in WIN_NAMES {
+            let code = key.evdev();
+            assert!(code.is_some(), "{name} has no Linux code");
+            codes.extend(code);
+        }
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(codes.len(), WIN_NAMES.len());
+    }
+
+    #[test]
+    fn linux_codes_match_input_event_codes() {
+        for (name, code) in [
+            ("Esc", 1),
+            ("A", 30),
+            ("Num7", 71),
+            ("Num.", 83),
+            ("IntlBackslash", 86),
+            ("F12", 88),
+            ("Num=", 117),
+            ("F13", 183),
+            ("F20", 190),
+            ("NumEnter", 96),
+            ("Home", 102),
+            ("Left", 105),
+            ("Delete", 111),
+            ("LWin", 125),
+            ("Menu", 127),
+        ] {
+            let key = PhysicalKey::from_windows_name(name).expect(name);
+            assert_eq!(key.evdev(), Some(code), "{name}");
+            assert_eq!(PhysicalKey::from_evdev(code), Some(key), "{name}");
+        }
+        assert_eq!(PhysicalKey::from_evdev(84), None);
+    }
+
+    #[test]
+    fn the_function_keys_are_f1_to_f20() {
+        let function_keys: Vec<&str> = WIN_NAMES
+            .iter()
+            .filter(|(key, _)| key.is_function_key())
+            .map(|(_, name)| *name)
+            .collect();
+        let expected: Vec<String> = (1..=20).map(|n| format!("F{n}")).collect();
+        assert_eq!(function_keys, expected);
     }
 
     #[test]

@@ -190,14 +190,15 @@ impl Hotkeys {
     }
 
     /// Paused, no shortcut is registered, so every key reaches the apps.
-    pub fn set_paused(&self, paused: bool) {
+    /// Returns the chords macOS refused once resumed.
+    pub fn set_paused(&self, paused: bool) -> Vec<Chord> {
         dispatch2::run_on_main(|_| {
             with_state(|state| {
                 state.paused = paused;
                 state.unregister();
                 state.register()
             })
-        });
+        })
     }
 }
 

@@ -5,6 +5,7 @@ use std::fmt;
 use serde::Deserialize;
 
 use crate::keys::{self, PhysicalKey};
+use crate::platform::Platform;
 
 /// NSEvent.ModifierFlags raw values. Rectangle keeps only these four and drops
 /// every other bit when it loads a shortcut (MASShortcut's device-independent
@@ -220,6 +221,43 @@ impl fmt::Display for Chord {
 }
 
 impl Chord {
+    /// The chord the way `platform`'s keyboard labels it: `Ctrl+Alt+Win+Right`
+    /// on Windows, `Ctrl+Alt+Super+Right` on Linux, and `⌃⌥⌘→` on the Mac,
+    /// where a key a Mac keyboard doesn't have keeps its PC name.
+    pub fn label(self, platform: Platform) -> String {
+        match platform {
+            Platform::Windows => self.to_string(),
+            Platform::Mac => self
+                .to_mac()
+                .map_or_else(|| self.to_string(), |mac| mac.to_string()),
+            Platform::Linux => {
+                let mut label = String::new();
+                for (on, name) in [
+                    (self.modifiers.ctrl, "Ctrl+"),
+                    (self.modifiers.alt, "Alt+"),
+                    (self.modifiers.shift, "Shift+"),
+                    (self.modifiers.win, "Super+"),
+                ] {
+                    if on {
+                        label.push_str(name);
+                    }
+                }
+                label.push_str(self.key.windows_name());
+                label
+            }
+        }
+    }
+
+    /// Whether the chord is ordinary typing: no Ctrl, Alt or Win, and not an
+    /// F-key, as Shift+A or a bare arrow is. Linux never binds one, since its
+    /// GNOME Shell extension won't grab the keys people type with.
+    pub fn is_typing(self) -> bool {
+        !(self.modifiers.ctrl
+            || self.modifiers.alt
+            || self.modifiers.win
+            || self.key.is_function_key())
+    }
+
     /// The same chord on a Mac keyboard: the macOS key code in this position,
     /// with Control, Option, Shift and Command for Ctrl, Alt, Shift and Win.
     /// `None` for keys a Mac keyboard doesn't have.
@@ -357,6 +395,39 @@ mod tests {
         }
         let menu = Chord::parse("ctrl+menu").expect("parses");
         assert_eq!(menu.to_mac(), None);
+    }
+
+    #[test]
+    fn each_platform_labels_chords_its_own_way() {
+        let next = Chord::parse("ctrl+alt+win+right").expect("parses");
+        assert_eq!(next.label(Platform::Windows), "Ctrl+Alt+Win+Right");
+        assert_eq!(next.label(Platform::Linux), "Ctrl+Alt+Super+Right");
+        assert_eq!(next.label(Platform::Mac), "⌃⌥⌘→");
+        let menu = Chord::parse("ctrl+menu").expect("parses");
+        assert_eq!(menu.label(Platform::Mac), "Ctrl+Menu");
+    }
+
+    #[test]
+    fn typing_is_a_chord_without_ctrl_alt_or_win_on_a_key_other_than_f() {
+        for typing in ["a", "shift+a", "left", "shift+enter", "num7"] {
+            assert!(
+                Chord::parse(typing).expect("parses").is_typing(),
+                "{typing}"
+            );
+        }
+        for shortcut in [
+            "ctrl+a",
+            "alt+left",
+            "win+shift+a",
+            "f5",
+            "shift+f13",
+            "f20",
+        ] {
+            assert!(
+                !Chord::parse(shortcut).expect("parses").is_typing(),
+                "{shortcut}"
+            );
+        }
     }
 
     #[test]

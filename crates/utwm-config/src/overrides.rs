@@ -1,7 +1,8 @@
 //! `~/.config/universal-tiling-window-manager/config.toml`, the app's own
 //! configuration. The file is optional, and so is every key in it. The
-//! top-level keys are Windows'; the `[mac]` table is the Mac's, so one file
-//! carried by the dotfiles can serve both machines.
+//! top-level keys are Windows', the `[mac]` table is the Mac's and the
+//! `[linux]` table is Linux's, so one file carried by the dotfiles can serve
+//! every machine.
 //!
 //! ```toml
 //! # A Rectangle Pro config to import, if not ~/.config/rectangle-pro/RectangleProConfig.json
@@ -19,6 +20,12 @@
 //! ignored_apps = ["com.apple.Terminal"]
 //!
 //! [mac.shortcuts]      # Mac-only rebinds, keys named as above; "" unbinds
+//! leftHalf = "ctrl+alt+h"
+//!
+//! [linux]              # GNOME app ids
+//! ignored_apps = ["org.gnome.Terminal"]
+//!
+//! [linux.shortcuts]    # Linux-only rebinds, keys named as above; "" unbinds
 //! leftHalf = "ctrl+alt+h"
 //! ```
 
@@ -39,6 +46,7 @@ pub struct Overrides {
     pub modifiers: ModifierMap,
     pub shortcuts: BTreeMap<String, String>,
     pub mac: MacOverrides,
+    pub linux: LinuxOverrides,
 }
 
 /// The `[mac]` table: the Mac's counterparts of `ignored_apps` and
@@ -51,6 +59,19 @@ pub struct MacOverrides {
     /// Chords in the same syntax as `[shortcuts]`: keys by their position,
     /// named as on a PC keyboard, with `ctrl`, `alt` (or `option`), `shift`
     /// and `cmd` (or `win`).
+    pub shortcuts: BTreeMap<String, String>,
+}
+
+/// The `[linux]` table: Linux's counterparts of `ignored_apps` and
+/// `[shortcuts]`. A Linux keyboard is a PC keyboard, and its modifiers follow
+/// the default map: Control is Ctrl, Option is Alt, Command is Super.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LinuxOverrides {
+    /// App ids as GNOME knows them, e.g. `org.gnome.Terminal`.
+    pub ignored_apps: Vec<String>,
+    /// Chords in the same syntax as `[shortcuts]`, with `super` (or `win`)
+    /// for the Super key.
     pub shortcuts: BTreeMap<String, String>,
 }
 
@@ -163,6 +184,35 @@ mod tests {
             Some("ctrl+option+h")
         );
         assert!(Overrides::parse("[mac]\nmodifiers = {}", Path::new("config.toml")).is_err());
+    }
+
+    #[test]
+    fn the_linux_table_parses_beside_the_others() {
+        let overrides = Overrides::parse(
+            r#"
+            ignored_apps = ["mstsc.exe"]
+            [mac]
+            ignored_apps = ["com.apple.Terminal"]
+            [linux]
+            ignored_apps = ["org.gnome.Terminal"]
+            [linux.shortcuts]
+            leftHalf = "ctrl+alt+h"
+            restore = ""
+            "#,
+            Path::new("config.toml"),
+        )
+        .expect("parses");
+        assert_eq!(overrides.ignored_apps, ["mstsc.exe"]);
+        assert_eq!(overrides.linux.ignored_apps, ["org.gnome.Terminal"]);
+        assert_eq!(
+            overrides
+                .linux
+                .shortcuts
+                .get("leftHalf")
+                .map(String::as_str),
+            Some("ctrl+alt+h")
+        );
+        assert!(Overrides::parse("[linux]\nmodifiers = {}", Path::new("config.toml")).is_err());
     }
 
     #[test]

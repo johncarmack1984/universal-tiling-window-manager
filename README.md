@@ -1,8 +1,8 @@
 # universal-tiling-window-manager
 
-A tiling window manager you drive from the keyboard, on Windows and the Mac. A shortcut puts the window in a half, a third, a corner, or on another display.
+A tiling window manager you drive from the keyboard, on Windows, the Mac and Linux (GNOME). A shortcut puts the window in a half, a third, a corner, or on another display.
 
-One configuration serves both machines, with the same keys in the same places: ⌃⌥← on the Mac is Ctrl+Alt+Left on Windows. It lives in the tray on Windows and in the menu bar on the Mac, updates itself from signed releases, and imports Rectangle Pro configs.
+One configuration serves every machine, with the same keys in the same places: ⌃⌥← on the Mac is Ctrl+Alt+Left on Windows and Linux. It lives in the tray on Windows and Linux and in the menu bar on the Mac, updates itself from signed releases on Windows and the Mac, and imports Rectangle Pro configs.
 
 ## Install
 
@@ -37,9 +37,26 @@ just install
 
 The command line is inside the app: `"/Applications/Window Manager.app/Contents/MacOS/universal-tiling-window-manager" check`. A symlink on your PATH shortens that to `universal-tiling-window-manager check`, as on Windows. Start the app itself from Finder, Spotlight or `open -a "Window Manager"` rather than from a terminal, or macOS counts it as part of the terminal and asks for the terminal's Accessibility access instead of its own.
 
+On Linux it runs under GNOME on Wayland, the desktop Ubuntu and Fedora start in, and for now it is built from source, with [just](https://just.systems):
+
+```sh
+sudo apt install libwebkit2gtk-4.1-dev libdbus-1-dev pkg-config
+git clone https://github.com/johncarmack1984/universal-tiling-window-manager
+cd universal-tiling-window-manager
+just install
+```
+
+`just install` builds the app, puts it in `~/.local/bin` with a desktop entry, so it opens from the app grid like any other app, and starts it in the tray. Building needs Rust 1.95 or newer and the system's GTK and WebKitGTK headers (on Fedora, `webkit2gtk4.1-devel` and `dbus-devel`); when Homebrew's pkg-config comes first on your PATH, the justfile uses the system's. `cargo install --locked --git https://github.com/johncarmack1984/universal-tiling-window-manager universal-tiling-window-manager` works too, with the same headers. It is developed and tested on Ubuntu 26.04 with GNOME 50.
+
+GNOME lets no app move other apps' windows or grab shortcuts of its own, so the app works through a small GNOME Shell extension that it carries and installs, `universal-tiling-window-manager@johncarmack.com`. GNOME Shell only starts a new extension when you log in, so log out and back in once after the first install. Until the extension runs, the first line of the app's menu says what's left, and clicking it takes the next step: installing the extension, switching it on, or logging out. The menu shows in the top bar through Ubuntu's AppIndicator support; on other GNOMEs, install the AppIndicator and KStatusNotifierItem Support extension first. Tick **Start at login** in the menu to have it start with GNOME.
+
+GNOME keeps some of the same keys for its own shortcuts: Ctrl+Alt with an arrow switches workspaces, Ctrl+Alt+Shift+Up moves a window to the workspace above, Ctrl+Alt+D shows the desktop and Ctrl+Alt+T opens a terminal. While GNOME holds them, the menu's first line says how many of the app's shortcuts are GNOME's; clicking it takes just those keys out of GNOME's shortcuts and gives them to the app, leaving GNOME its other keys for the same things (Super+Page Up still switches workspaces). Settings → Keyboard → View and Customize Shortcuts puts any of them back, or `[linux.shortcuts]` in config.toml moves the app's action to another key instead.
+
+To update, `git pull` and `just install` again; it quits the running copy itself. When the update changes the extension, the new copy loads at the next log-in, and the menu says so. The command line is `~/.local/bin/universal-tiling-window-manager check`, or `universal-tiling-window-manager check` with `~/.local/bin` on your PATH.
+
 ## Shortcuts
 
-| Action | Mac | Windows | Name in config.toml |
+| Action | Mac | Windows and Linux | Name in config.toml |
 |---|---|---|---|
 | Left, right, top, bottom half | ⌃⌥← ⌃⌥→ ⌃⌥↑ ⌃⌥↓ | Ctrl+Alt+Left, Right, Up, Down | `leftHalf` `rightHalf` `topHalf` `bottomHalf` |
 | Top left, top right, bottom left, bottom right | ⌃⌥U ⌃⌥I ⌃⌥J ⌃⌥K | Ctrl+Alt+U, I, J, K | `topLeft` `topRight` `bottomLeft` `bottomRight` |
@@ -50,7 +67,7 @@ The command line is inside the app: `"/Applications/Window Manager.app/Contents/
 | Larger, smaller | ⌃⌥= ⌃⌥- | Ctrl+Alt+=, - | `larger` `smaller` |
 | Center | ⌃⌥C | Ctrl+Alt+C | `center` |
 | Restore | ⌃⌥⌫ | Ctrl+Alt+Backspace | `restore` |
-| Next, previous display | ⌃⌥⌘→ ⌃⌥⌘← | Ctrl+Alt+Win+Right, Left | `nextDisplay` `previousDisplay` |
+| Next, previous display | ⌃⌥⌘→ ⌃⌥⌘← | Ctrl+Alt+Win+Right, Left (Super on Linux) | `nextDisplay` `previousDisplay` |
 
 Press a half again and it cycles through two thirds and one third. Every action is in the menu too, with its shortcut if it has one.
 
@@ -65,7 +82,7 @@ These have no shortcut until you give them one:
 
 ## Configuration
 
-Everything lives in `~/.config/universal-tiling-window-manager/config.toml`. The file is optional, and so is every key in it. Top-level keys are for Windows and the `[mac]` table is for the Mac, so one file in your dotfiles serves both machines. The running app notices a change within a couple of seconds; **Reload configuration** in its menu does it right away.
+Everything lives in `~/.config/universal-tiling-window-manager/config.toml`. The file is optional, and so is every key in it. Top-level keys are for Windows, the `[mac]` table is for the Mac and the `[linux]` table is for Linux, so one file in your dotfiles serves every machine. The running app notices a change within a couple of seconds; **Reload configuration** in its menu does it right away. Copies from before Linux support reject a `[linux]` table and fall back to the default shortcuts, so update every machine before adding one.
 
 ```toml
 # A Rectangle Pro config to import, if it isn't at the usual path (below).
@@ -91,6 +108,18 @@ ignored_apps = ["com.apple.Terminal"]
 # Clear), and ctrl, alt or option, shift, and cmd are ⌃, ⌥, ⇧ and ⌘.
 [mac.shortcuts]
 leftHalf = "ctrl+option+h"
+
+# GNOME apps to leave alone, by app id: the name of the app's desktop file
+# without .desktop, like org.gnome.Terminal, or firefox_firefox for Ubuntu's
+# Firefox.
+[linux]
+ignored_apps = ["org.gnome.Terminal"]
+
+# Rebind an action on Linux only, or unbind it with "". Keys are named as for
+# Windows, super is the Super key, and a shortcut needs ctrl, alt or super
+# unless its key is F1 to F20.
+[linux.shortcuts]
+lastTwoThirds = "ctrl+alt+super+t"
 ```
 
 `universal-tiling-window-manager check` prints every shortcut as it binds on this machine, anything it couldn't bind and why, and the settings in effect.
@@ -111,6 +140,8 @@ On Windows each Mac shortcut binds to the Windows key in the same physical posit
 
 Keys in the NumLock, CapsLock and ScrollLock positions are never bound on Windows: a binding would toggle the lock, and RustDesk taps NumLock on its own to keep lock state in sync. On a Mac keyboard that is the keypad's Clear key, which the Mac binds as usual.
 
+On Linux each shortcut binds by position too: the app asks GNOME Shell to grab the key by its keycode, so a binding stays on the same key whatever the layout, and Command becomes Super. As on Windows, the lock-key positions are never bound. GNOME tells the app only about the shortcuts it grabbed, so `probe` is Windows only.
+
 `universal-tiling-window-manager probe` logs every key event for a minute without swallowing anything, which shows what a keyboard or a remote-control app actually delivers to Windows.
 
 ## Not supported yet
@@ -124,7 +155,9 @@ Keys in the NumLock, CapsLock and ScrollLock positions are never bound on Window
 Limits worth knowing:
 - **Elevated windows.** Windows only lets an app move an administrator window if the app runs elevated too, so those windows don't move.
 - **App shortcuts.** The shortcuts are global, so they take precedence over apps that use the same keys, such as VS Code's Ctrl+Alt+Up and Down on Windows.
-- **Full screen.** On the Mac, windows in full screen (in a Space of their own), minimized windows and sheets are left alone.
+- **Full screen.** On the Mac, windows in full screen (in a Space of their own), minimized windows and sheets are left alone. On Linux, full-screen and minimized windows, and dialogs attached to their window, are left alone.
+- **GNOME only.** On Linux the app works under GNOME Shell; other desktops get a line in its menu saying they aren't supported yet. Linux builds don't update themselves yet.
+- **Apps that inhibit shortcuts.** On GNOME, an app that takes all keys while it has the focus, as remote desktop and virtual machine apps do, gets the shortcuts too.
 
 ## Command line
 
@@ -141,7 +174,7 @@ universal-tiling-window-manager [--config <export.json>] [command]
   version               print the version
 ```
 
-The log is at `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on Windows and `~/Library/Logs/universal-tiling-window-manager/log.txt` on the Mac; set `UTWM_LOG=debug` to see every shortcut and where each window landed.
+The log is at `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on Windows, `~/Library/Logs/universal-tiling-window-manager/log.txt` on the Mac and `~/.local/state/universal-tiling-window-manager/log.txt` on Linux; set `UTWM_LOG=debug` to see every shortcut and where each window landed.
 
 ## Development
 
@@ -151,8 +184,9 @@ The log is at `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on Window
 | `crates/utwm-layout` | Where each action puts a window; pure, so its tests run anywhere |
 | `crates/utwm-windows` | Win32: the low-level keyboard hook, finding and placing windows, displays, start at login |
 | `crates/utwm-macos` | macOS: Carbon hot keys, finding and placing windows through the Accessibility API, displays, start at login (a LaunchAgent) |
-| `apps/desktop` | The Tauri 3 tray app and the command line, one codebase for both platforms |
-| `tools/bundle` | `utwm-bundle`, which builds the Mac app bundle (`just bundle`), for both architectures with `--universal`, and installs it into /Applications (`just install`) |
+| `crates/utwm-linux` | Linux under GNOME: the GNOME Shell extension (`gnome-extension/`) that grabs the shortcuts and moves windows, the D-Bus side that drives it, displays, freeing GNOME's own shortcuts, start at login |
+| `apps/desktop` | The Tauri 3 tray app and the command line, one codebase for all three platforms |
+| `tools/bundle` | `utwm-bundle`, which builds the Mac app bundle (`just bundle`), for both architectures with `--universal`, and installs it into /Applications (`just install`), or on Linux lays out and installs the app under `~/.local` |
 | `tools/e2e` | The end-to-end checks (`utwm-e2e`, one per platform), and `utwm-inject`, which presses keys by scan code on Windows the way RustDesk does |
 
 `just check` runs formatting, clippy and the tests. `just run` starts the app from source with debug logging, and `just e2e` then runs the end-to-end check for that platform, which opens a window of its own and moves only that.
@@ -160,6 +194,8 @@ The log is at `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on Window
 On Windows it presses shortcuts the way RustDesk delivers them and checks where the window lands to the pixel. It expects a 1920×1080 display with a bottom taskbar and the author's imported config, so treat it as a template for other setups.
 
 On the Mac it posts the configured shortcuts as key events and checks that each lands exactly where the layout engine says, on any display arrangement and with any export. It needs the app running with Accessibility access, no other window manager answering the same shortcuts, and Accessibility access for the terminal running the check, which posting key events requires.
+
+On Linux it presses the shortcuts through GNOME's remote desktop interface, by key position, and checks each landing as the Mac does. It needs the app running with its extension active and GNOME's conflicting shortcuts freed. `just e2e-headless` needs neither: it runs the same check in a GNOME Shell of its own, with no screen and two virtual displays, its own bus, settings and folders, outside the login session, so the desktop you're using is left alone.
 
 ### Releases
 

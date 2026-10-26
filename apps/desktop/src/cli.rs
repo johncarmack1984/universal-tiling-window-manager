@@ -113,19 +113,19 @@ pub fn run(invocation: Invocation) -> ExitCode {
         #[cfg(not(windows))]
         Command::Probe { .. } => {
             print_to_terminal(
-                "probe is for Windows, where shortcuts are translated; elsewhere each shortcut is the key the configuration names, and `check` lists them.",
+                "probe is for Windows, where a keyboard hook sees every key; elsewhere the system only reports the shortcuts it grabbed, and `check` lists them.",
             );
             ExitCode::FAILURE
         }
-        #[cfg(any(windows, target_os = "macos"))]
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
         Command::Reload => control(crate::platform::Control::Reload),
-        #[cfg(any(windows, target_os = "macos"))]
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
         Command::Pause => control(crate::platform::Control::TogglePause),
-        #[cfg(any(windows, target_os = "macos"))]
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
         Command::Quit => control(crate::platform::Control::Quit),
-        #[cfg(any(windows, target_os = "macos"))]
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
         Command::Update => control(crate::platform::Control::Update),
-        #[cfg(any(windows, target_os = "macos"))]
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
         Command::Run => match crate::app::run(invocation.config) {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
@@ -133,10 +133,10 @@ pub fn run(invocation: Invocation) -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        #[cfg(not(any(windows, target_os = "macos")))]
+        #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
         _ => {
             print_to_terminal(
-                "universal-tiling-window-manager runs on Windows and macOS; `check` works anywhere.",
+                "universal-tiling-window-manager runs on Windows, macOS and Linux; `check` works anywhere.",
             );
             ExitCode::FAILURE
         }
@@ -164,7 +164,7 @@ fn check(config: Option<PathBuf>) -> ExitCode {
     }
 }
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 fn control(control: crate::platform::Control) -> ExitCode {
     if crate::platform::send_control(control) {
         ExitCode::SUCCESS

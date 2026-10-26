@@ -23,6 +23,14 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+utwm-linux.workspace = true
+# The test window, with the windowing library Tauri itself uses, as Tauri
+# builds it.
+tao = { version = "0.37", default-features = false, features = ["rwh_06"] }
+# Mutter's remote desktop interface, which presses the keys.
+zbus = { version = "5.19", default-features = false, features = ["async-io", "blocking-api"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 utwm-macos.workspace = true
 dispatch2 = { version = "0.3", default-features = false, features = ["std", "objc2"] }

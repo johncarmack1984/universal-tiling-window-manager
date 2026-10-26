@@ -1,5 +1,6 @@
 //! universal-tiling-window-manager: a tiling window manager you drive from the
-//! keyboard, on Windows and the Mac, with one configuration for both.
+//! keyboard, on Windows, the Mac and Linux, with one configuration for all
+//! three.
 //!
 //! With no arguments it runs in the tray (the menu bar on the Mac). The
 //! subcommands are for the command line: `check` shows what the configuration
@@ -12,19 +13,19 @@
 
 mod cli;
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 mod app;
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 mod controller;
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 mod logging;
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 mod platform;
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 mod poll;
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 mod tray;
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 mod updates;
 
 use std::process::ExitCode;

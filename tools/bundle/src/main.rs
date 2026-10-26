@@ -15,7 +15,15 @@
 //! signature changes with every build, so an ad-hoc install clears the old
 //! grant and the app asks again; any certificate, a self-signed one included,
 //! keeps the grant across installs.
+//!
+//! On Linux it stages the release executable with a desktop entry and icons in
+//! `target/release/bundle/linux`. With `--install` it puts the executable in
+//! `~/.local/bin` and the rest in `$XDG_DATA_HOME` (`~/.local/share` by
+//! default), quitting a running copy first, installs the GNOME Shell extension
+//! the app works through, and starts the new copy.
 
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod mac;
 
@@ -32,8 +40,21 @@ fn main() -> ExitCode {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 fn main() -> ExitCode {
-    eprintln!("utwm-bundle builds the Mac app; on Windows, `just install` installs the executable");
+    match linux::run(std::env::args().skip(1)) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("utwm-bundle: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn main() -> ExitCode {
+    eprintln!(
+        "utwm-bundle builds the Mac app and the Linux install; on Windows, `just install` installs the executable"
+    );
     ExitCode::FAILURE
 }

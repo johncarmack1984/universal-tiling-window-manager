@@ -1,0 +1,9 @@
+{
+  "uuid": "universal-tiling-window-manager@johncarmack.com",
+  "name": "Window Manager",
+  "description": "Moves windows and answers shortcuts for the Window Manager app (universal-tiling-window-manager), which installs it. It does nothing on its own.",
+  "shell-version": ["50"],
+  "session-modes": ["user", "unlock-dialog"],
+  "url": "https://github.com/johncarmack1984/universal-tiling-window-manager",
+  "version": 1
+}
