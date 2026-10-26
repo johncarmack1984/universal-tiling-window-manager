@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::APP_ID;
+use crate::{APP_ID, APP_NAME};
 
 /// `$XDG_CONFIG_HOME/autostart`, or `~/.config/autostart`, and the entry named
 /// by the app's identifier.
@@ -53,7 +53,7 @@ fn entry(exe: &Path) -> String {
     format!(
         "[Desktop Entry]
 Type=Application
-Name=Window Manager
+Name={APP_NAME}
 Comment=A tiling window manager you drive from the keyboard
 Exec={}
 Icon={APP_ID}

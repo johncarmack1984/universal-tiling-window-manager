@@ -4,8 +4,9 @@
 //!
 //! With no arguments it runs in the tray (the menu bar on the Mac). The
 //! subcommands are for the command line: `check` shows what the configuration
-//! binds, `probe` shows what the keyboard delivers (Windows), and `quit`,
-//! `reload`, `pause` and `update` talk to the running instance.
+//! binds, `probe` shows what the keyboard delivers (Windows), `install` puts a
+//! download in place (Linux), and `quit`, `reload`, `pause` and `update` talk
+//! to the running instance.
 
 // Release builds have no console window; `check` and `probe` attach to the
 // terminal that launched them instead.
