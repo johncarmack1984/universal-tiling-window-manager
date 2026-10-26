@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.1.0...v0.2.0) (2026-10-26)
+
+
+### Features
+
+* run on Linux under GNOME ([#8](https://github.com/johncarmack1984/universal-tiling-window-manager/issues/8)) ([0faa690](https://github.com/johncarmack1984/universal-tiling-window-manager/commit/0faa6906fc2e1f82c9a309474d3dcde18fa527a9))
+* ship Linux in releases, and update installed copies from them ([#11](https://github.com/johncarmack1984/universal-tiling-window-manager/issues/11)) ([cdddce1](https://github.com/johncarmack1984/universal-tiling-window-manager/commit/cdddce15e2d2ef9f44d5c98e666162161e8deef1))
+
 ## 0.1.0 (2026-10-25)
 
 
