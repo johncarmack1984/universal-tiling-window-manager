@@ -191,7 +191,7 @@ The log is at `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on Window
 
 `just check` runs formatting, clippy and the tests. `just run` starts the app from source with debug logging, and `just e2e` then runs the end-to-end check for that platform, which opens a window of its own and moves only that.
 
-On Windows it presses shortcuts the way RustDesk delivers them and checks where the window lands to the pixel. It expects a 1920×1080 display with a bottom taskbar and the author's imported config, so treat it as a template for other setups.
+On Windows it presses the configured shortcuts the way RustDesk delivers them, by scan code, and checks that each lands exactly where the layout engine says, on any display arrangement and with any configuration. Each key reaches the app as a scan code of its own, so it presses every shortcut the configuration binds, and the keypad's twice: NumLock on, then off, when Windows reports most keypad keys as the navigation keys that share their scan codes. It needs the app running, and puts NumLock back as it found it.
 
 On the Mac it posts the configured shortcuts as key events and checks that each lands exactly where the layout engine says, on any display arrangement and with any export. It needs the app running with Accessibility access, no other window manager answering the same shortcuts, and Accessibility access for the terminal running the check, which posting key events requires.
 
