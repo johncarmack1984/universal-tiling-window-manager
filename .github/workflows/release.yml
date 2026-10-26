@@ -4,12 +4,13 @@ name: release
 # a release PR open from conventional-commit history: the version bump, the
 # CHANGELOG, and every version stamp through extra-files. Merging it lands the
 # bumped manifest on main, and this run ships it: the release job cuts the
-# vX.Y.Z tag and an assetless GitHub Release, and CI gates the tag. Then the
-# Mac app is built for Apple silicon and Intel, signed with the Developer ID
-# and notarized, and the Windows installer and the Linux executable are built
-# beside it. All three are attached, with the updater's latest.json last. That
-# file going up is what installed copies see, so a release that failed
-# anywhere before it never reaches them.
+# vX.Y.Z tag and a draft GitHub Release, and CI gates the tag. Then the Mac
+# app is built for Apple silicon and Intel, signed with the Developer ID and
+# notarized, and the Windows installer and the Linux executable are built
+# beside it. All three go on the draft with the updater's latest.json, and
+# publishing the draft comes last. Installed copies read latest.json from the
+# latest published release, so until then they see the release before it,
+# and a release that failed anywhere on the way never reaches them.
 on:
   push:
     branches: [main]
@@ -77,9 +78,10 @@ jobs:
       # The pipeline keys off what the repo shows, never a tool's memory of
       # what it did. The manifest names the current version: 0.0.0 means
       # nothing has been released yet; no release for it means this push
-      # merged the release PR, so cut the tag and an assetless release at this
-      # run's own commit; an assetless release means an earlier attempt died
-      # before the app landed, so ship it; a release with assets is finished
+      # merged the release PR, so cut the tag at this run's own commit and a
+      # draft release on it; a draft means an earlier attempt died before
+      # publishing, so ship it, rebuilt and re-signed, which no installed copy
+      # can notice, since none has seen it; a published release is finished
       # and never rebuilt, since re-signing a tag that installed copies already
       # fetched breaks their updates.
       - name: Resolve or cut the release
@@ -95,12 +97,12 @@ jobs:
             { echo "release_created=false"; echo "tag_name="; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if assets=$(gh release view "$tag" --json assets --jq '.assets | length' 2>/dev/null); then
-            if [ "$assets" = "0" ]; then
-              echo "::notice::shipping assetless release $tag (attempt ${{ github.run_attempt }})"
+          if draft=$(gh release view "$tag" --json isDraft --jq '.isDraft' 2>/dev/null); then
+            if [ "$draft" = "true" ]; then
+              echo "::notice::shipping draft release $tag (attempt ${{ github.run_attempt }})"
               { echo "release_created=true"; echo "tag_name=$tag"; } >> "$GITHUB_OUTPUT"
             else
-              echo "$tag is fully released; nothing to ship"
+              echo "$tag is released; nothing to ship"
               { echo "release_created=false"; echo "tag_name="; } >> "$GITHUB_OUTPUT"
             fi
             exit 0
@@ -113,8 +115,16 @@ jobs:
             grab && index($0, "## ") == 1 { exit }
             grab { print }
           ' CHANGELOG.md)
-          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes "${notes:-$tag}"
-          echo "::notice::cut $tag at ${GITHUB_SHA:0:7}"
+          # A draft gets no tag until it is published, and CI and the builds
+          # check the tag out, so the tag comes first. A tag left by an
+          # attempt that died before its draft keeps its commit.
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
+            echo "::notice::tagged $tag at ${GITHUB_SHA:0:7}"
+          fi
+          gh release create "$tag" --draft --verify-tag --title "$tag" --notes "${notes:-$tag}"
+          echo "::notice::cut $tag as a draft"
           { echo "release_created=true"; echo "tag_name=$tag"; } >> "$GITHUB_OUTPUT"
 
       # Tagging is what flips a merged release PR's label; with tagging done
@@ -429,15 +439,17 @@ jobs:
         if: ${{ always() }}
         run: rm -f "$RUNNER_TEMP/updater.key"
 
-  # Attaches every build to the release, then writes latest.json, the file
-  # every installed copy polls. It goes up last, and only once every download
-  # it names answers, because its going up is what "released" means.
+  # Attaches every build to the draft, with latest.json, the file every
+  # installed copy polls, then publishes it. Publishing is what "released"
+  # means: installed copies read latest.json from the latest published
+  # release, so until then they see the release before it. A published
+  # release whose downloads don't answer goes back to being a draft.
   publish:
     needs: [release, build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write # attach the release assets
+      contents: write # attach the release assets and publish the release
     env:
       TAG: ${{ needs.release.outputs.tag_name }}
       MAC_VERSION: ${{ needs.build-macos.outputs.version }}
@@ -469,7 +481,7 @@ jobs:
               || { echo "::error::built version $version does not match release tag $TAG"; exit 1; }
           done
 
-      - name: Attach the builds to the release
+      - name: Attach the builds to the draft
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -483,7 +495,7 @@ jobs:
       # bundler marked looks for that plain key. The URLs are the public
       # download links rather than the REST asset URLs, which would put every
       # update on GitHub's unauthenticated API rate limit.
-      - name: Publish the updater manifest
+      - name: Attach the updater manifest to the draft
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -512,10 +524,48 @@ jobs:
                    | map({key: ., value: {signature: $linux_signature, url: $linux_url}}))
                 | from_entries)}' > "$RUNNER_TEMP/latest.json"
           jq '.platforms | keys' "$RUNNER_TEMP/latest.json"
-          # A manifest is worth what the URLs inside it resolve to.
-          for url in "$base/$mac" "$base/$windows" "$base/$linux"; do
-            code=$(curl -sSL -o /dev/null -w '%{http_code}' "$url")
-            test "$code" = "200" || { echo "::error::$url answered $code"; exit 1; }
+          # A draft's files answer at their public links only once it is
+          # published, which is when the links are checked. Here the draft
+          # must hold every file the manifest names.
+          attached=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.state == "uploaded") | .name' -R "$GITHUB_REPOSITORY")
+          for file in "$mac" "$windows" "$linux"; do
+            grep -qxF "$file" <<< "$attached" || { echo "::error::the draft holds no $file"; exit 1; }
           done
           gh release upload "$TAG" "$RUNNER_TEMP/latest.json" --clobber -R "$GITHUB_REPOSITORY"
-          echo "published latest.json for $TAG"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$TAG" --draft=false --latest -R "$GITHUB_REPOSITORY"
+
+      # A manifest is worth what the URLs inside it resolve to. This release
+      # must now be the latest, and its latest.json and every download it
+      # names must answer at their public links. One that fails goes back to
+      # being a draft, and installed copies back to the release before it.
+      - name: Check what installed copies fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          failed=""
+          latest=""
+          for _ in 1 2 3; do
+            latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name') && break
+            sleep 5
+          done
+          [ "$latest" = "$TAG" ] || failed="the latest release is ${latest:-unknown}, not $TAG"
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          for url in "$base/latest.json" $(jq -r '[.platforms[].url] | unique | .[]' "$RUNNER_TEMP/latest.json"); do
+            code=$(curl -sSL --fail --retry 3 --retry-all-errors --retry-delay 5 -o /dev/null -w '%{http_code}' "$url") || true
+            [ "$code" = "200" ] || failed="${failed:+$failed; }$url answered ${code:-nothing}"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::$failed"
+            if gh release edit "$TAG" --draft=true -R "$GITHUB_REPOSITORY"; then
+              echo "::error::$TAG is a draft again; re-run this workflow to ship it"
+            else
+              echo "::error::$TAG could not go back to being a draft, so installed copies can see it"
+            fi
+            exit 1
+          fi
+          echo "released $TAG"
