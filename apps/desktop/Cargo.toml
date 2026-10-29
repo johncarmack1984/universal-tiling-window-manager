@@ -29,6 +29,8 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["f
 tauri = { version = "=3.0.0-alpha.5", features = ["tray-icon", "image-png"] }
 tauri-runtime-wry = "=3.0.0-alpha.5"
 tauri-plugin-single-instance = "=3.0.0-alpha.3"
+# The file picker behind Choose configuration….
+tauri-plugin-dialog = "=3.0.0-alpha.4"
 
 [target.'cfg(windows)'.dependencies]
 utwm-windows.workspace = true

@@ -1,11 +1,10 @@
-//! `~/.config/universal-tiling-window-manager/config.toml`, the app's own
-//! configuration. The file is optional, and so is every key in it. The
-//! top-level keys are Windows', the `[mac]` table is the Mac's and the
-//! `[linux]` table is Linux's, so one file carried by the dotfiles can serve
-//! every machine.
+//! `~/.config/window-manager/config.toml`, the app's own configuration. The
+//! file is optional, and so is every key in it. The top-level keys are
+//! Windows', the `[mac]` table is the Mac's and the `[linux]` table is
+//! Linux's, so one file carried by the dotfiles can serve every machine.
 //!
 //! ```toml
-//! # A Rectangle Pro config to import, if not ~/.config/rectangle-pro/RectangleProConfig.json
+//! # A Rectangle Pro config to import, if not ~/.config/window-manager/config.json
 //! import = "~/Dropbox/RectangleProConfig.json"
 //! # Windows apps whose windows are left alone
 //! ignored_apps = ["mstsc.exe"]

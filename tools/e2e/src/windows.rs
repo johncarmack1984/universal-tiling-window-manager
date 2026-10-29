@@ -105,7 +105,8 @@ pub fn run() -> ExitCode {
 fn load() -> Result<Resolved, Box<dyn std::error::Error>> {
     let home = std::env::home_dir().ok_or("no home directory")?;
     let explicit = std::env::var_os("UTWM_CONFIG").map(PathBuf::from);
-    Ok(utwm_config::load(&home, explicit.as_deref())?)
+    let named = utwm_config::load::named(&home, explicit.as_deref());
+    Ok(utwm_config::load(&home, named.as_deref())?)
 }
 
 fn checks(config: &Resolved, window: window::Hwnd) -> bool {

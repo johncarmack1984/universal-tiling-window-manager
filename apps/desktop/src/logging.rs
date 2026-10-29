@@ -1,8 +1,8 @@
-//! Logs to `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on
-//! Windows, `~/Library/Logs/universal-tiling-window-manager/log.txt` on the
-//! Mac and `~/.local/state/universal-tiling-window-manager/log.txt` on Linux,
-//! keeping one previous file. `UTWM_LOG` sets the filter (`info` by default;
-//! `debug` shows every key binding that fires and where each window landed).
+//! Logs to `%LOCALAPPDATA%\window-manager\log.txt` on Windows,
+//! `~/Library/Logs/window-manager/log.txt` on the Mac and
+//! `~/.local/state/window-manager/log.txt` on Linux, keeping one previous
+//! file. `UTWM_LOG` sets the filter (`info` by default; `debug` shows every
+//! key binding that fires and where each window landed).
 
 use std::fs::{self, OpenOptions};
 use std::path::PathBuf;
@@ -20,7 +20,7 @@ pub fn log_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
         .filter(|dir| dir.is_absolute())
         .or_else(|| std::env::home_dir().map(|home| home.join(".local").join("state")));
-    dir.map(|dir| dir.join(utwm_config::load::APP_DIR))
+    dir.map(|dir| dir.join(utwm_config::load::FOLDER))
 }
 
 /// Starts logging. Returns the log file's path, if one could be opened.

@@ -111,6 +111,16 @@ impl Source {
         }
     }
 
+    /// The default shortcuts, because nothing was at `path`, where the config
+    /// to import goes.
+    pub fn nothing_at(path: PathBuf) -> Self {
+        Self {
+            kind: None,
+            version: None,
+            path: Some(path),
+        }
+    }
+
     pub fn describe(&self) -> String {
         match (&self.kind, &self.path) {
             (Some(kind), Some(path)) => format!(
@@ -123,7 +133,10 @@ impl Source {
                 path.display()
             ),
             (Some(kind), None) => format!("imported from {}", kind.label()),
-            (None, _) => "the default shortcuts (nothing to import)".to_owned(),
+            (None, Some(path)) => {
+                format!("the default shortcuts, with nothing at {}", path.display())
+            }
+            (None, None) => "the default shortcuts (nothing to import)".to_owned(),
         }
     }
 }

@@ -37,6 +37,10 @@ pub enum Command {
     TogglePause,
     ToggleAutostart,
     OpenConfigFolder,
+    /// The menu's Choose configuration…: shows a file picker.
+    ChooseConfig,
+    /// What the file picker returned; `None` if it was cancelled.
+    ConfigChosen(Option<PathBuf>),
     /// What the menu's first line reports changed: on the Mac, Accessibility
     /// access came or went, or a Rectangle started or quit; on Linux, the
     /// GNOME Shell extension came or went, or took a key it had refused.
@@ -67,9 +71,9 @@ pub struct Shared {
     pub explicit_config: Option<PathBuf>,
     /// Files whose changes trigger a reload.
     pub watched: Arc<Mutex<Vec<PathBuf>>>,
-    /// The controller's own channel, for a tray made after startup and for
-    /// checks it schedules for itself.
-    #[cfg(target_os = "linux")]
+    /// The controller's own channel: for the file picker's answer, and on
+    /// Linux for a tray made after startup and for checks it schedules for
+    /// itself.
     pub commands: Sender<Command>,
 }
 
@@ -94,6 +98,11 @@ pub struct Controller {
     /// GNOME shortcuts just freed, until the check a moment later.
     #[cfg(target_os = "linux")]
     freed: Vec<utwm_linux::conflicts::Holder>,
+    /// Whether the file picker Choose configuration… opens is up. The focus
+    /// stays with it rather than going back to the last window once the menu
+    /// closes, even before the picker shows.
+    #[cfg(windows)]
+    picking: bool,
     /// Chords that freeing GNOME's shortcuts didn't free, which the menu no
     /// longer offers.
     #[cfg(target_os = "linux")]
@@ -134,6 +143,8 @@ impl Controller {
             freed: Vec::new(),
             #[cfg(target_os = "linux")]
             unfreeable: HashSet::new(),
+            #[cfg(windows)]
+            picking: false,
             updates,
             update_state: updates::State::Idle,
             last_target: if cfg!(windows) {
@@ -167,6 +178,7 @@ impl Controller {
             &self.config,
             self.load_error.as_deref(),
             self.refused.len(),
+            &self.shared.home,
         ))
     }
 
@@ -198,6 +210,8 @@ impl Controller {
                 Command::TogglePause => self.toggle_pause(),
                 Command::ToggleAutostart => self.toggle_autostart(),
                 Command::OpenConfigFolder => self.open_config_folder(),
+                Command::ChooseConfig => self.choose_config(),
+                Command::ConfigChosen(path) => self.config_chosen(path),
                 #[cfg(target_os = "macos")]
                 Command::StatusChanged => {
                     // A Rectangle that held some shortcuts may have quit.
@@ -502,7 +516,7 @@ impl Controller {
     /// shortcut works until another window is clicked.
     #[cfg(windows)]
     fn return_focus(&self) {
-        if !window::focus_left_on_own_window() {
+        if self.picking || !window::focus_left_on_own_window() {
             return;
         }
         if let Some(target_window) = self.menu_target() {
@@ -512,20 +526,18 @@ impl Controller {
     }
 
     pub fn reload(&mut self) {
+        let named =
+            utwm_config::load::named(&self.shared.home, self.shared.explicit_config.as_deref());
         let overrides = utwm_config::load::load_overrides(&self.shared.home);
         let loaded = overrides.and_then(|overrides| {
             if let Ok(mut watched) = self.shared.watched.lock() {
                 *watched = utwm_config::load::watched_paths(
                     &self.shared.home,
-                    self.shared.explicit_config.as_deref(),
+                    named.as_deref(),
                     &overrides,
                 );
             }
-            utwm_config::load::load_with(
-                &self.shared.home,
-                self.shared.explicit_config.as_deref(),
-                &overrides,
-            )
+            utwm_config::load::load_with(&self.shared.home, named.as_deref(), &overrides)
         });
         match loaded {
             Ok(resolved) => {
@@ -598,11 +610,77 @@ impl Controller {
             .path
             .as_ref()
             .and_then(|path| path.parent().map(PathBuf::from))
-            .unwrap_or_else(|| self.shared.home.join(".config").join("rectangle-pro"));
+            .unwrap_or_else(|| utwm_config::load::config_dir(&self.shared.home));
         let _ = std::fs::create_dir_all(&folder);
         if let Err(error) = platform::open_folder(&folder) {
             tracing::warn!(%error, "could not open the configuration folder");
         }
+    }
+
+    /// Shows a file picker for the config to import, in the folder of the one
+    /// in use; what is picked arrives as [`Command::ConfigChosen`].
+    fn choose_config(&mut self) {
+        use tauri_plugin_dialog::DialogExt;
+
+        let Some(app) = self.shared.app.get() else {
+            return;
+        };
+        let folder = self
+            .config
+            .source
+            .path
+            .as_ref()
+            .and_then(|path| path.parent().map(PathBuf::from))
+            .unwrap_or_else(|| utwm_config::load::config_dir(&self.shared.home));
+        #[cfg(windows)]
+        {
+            self.picking = true;
+        }
+        // A menu bar app isn't the active app, so its picker would open
+        // behind the one that is.
+        #[cfg(target_os = "macos")]
+        utwm_macos::app::come_forward();
+        let mut picker = app
+            .dialog()
+            .file()
+            .set_title("Choose configuration")
+            .add_filter("Rectangle or Rectangle Pro export", &["json"]);
+        if folder.is_dir() {
+            picker = picker.set_directory(&folder);
+        }
+        let commands = self.shared.commands.clone();
+        picker.pick_file(move |picked| {
+            let path = picked.and_then(|picked| picked.into_path().ok());
+            let _ = commands.send(Command::ConfigChosen(path));
+        });
+    }
+
+    /// Uses the config picked from now on, remembering it for this machine,
+    /// unless it can't be read: then the one in use stays, and the tray says
+    /// why.
+    fn config_chosen(&mut self, picked: Option<PathBuf>) {
+        #[cfg(windows)]
+        {
+            self.picking = false;
+        }
+        #[cfg(target_os = "macos")]
+        utwm_macos::app::step_back();
+        let Some(path) = picked else {
+            return;
+        };
+        if let Err(error) = utwm_config::load::load(&self.shared.home, Some(&path)) {
+            tracing::warn!(%error, "not using the configuration picked");
+            self.notify(&format!("Couldn't use {}: {error}", path.display()));
+            return;
+        }
+        let file = utwm_config::load::chosen_file(&self.shared.home);
+        if let Err(error) = utwm_config::load::write_chosen(&file, Some(&path)) {
+            tracing::warn!(%error, "could not remember the configuration");
+            self.notify(&format!("Couldn't remember the configuration: {error}"));
+            return;
+        }
+        tracing::info!(path = %path.display(), "configuration chosen");
+        self.reload();
     }
 
     fn refresh_tray(&self) {

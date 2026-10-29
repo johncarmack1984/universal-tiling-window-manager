@@ -11,6 +11,7 @@
 //! are.
 #![cfg(target_os = "macos")]
 
+pub mod app;
 pub mod autostart;
 mod ax;
 pub mod conflicts;

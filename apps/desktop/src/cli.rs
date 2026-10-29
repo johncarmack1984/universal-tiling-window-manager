@@ -10,6 +10,8 @@ With no command, runs in the tray (the menu bar on the Mac).
 
 commands:
   check [export.json]   show what each shortcut becomes on this machine
+  config [export.json]  show or choose the configuration this machine uses
+  config --default      look for the configuration in the usual places again
   probe [seconds]       log every key the keyboard delivers (default 60s; Windows)
   reload                make the running instance re-read its configuration
   pause                 pause or resume the running instance's shortcuts
@@ -18,15 +20,16 @@ commands:
   install               put this copy in ~/.local/bin and start it (Linux)
   version               print the version
 
-Configuration lives in ~/.config/universal-tiling-window-manager/config.toml.
-A Rectangle Pro config is imported from
-~/.config/rectangle-pro/RectangleProConfig.json, or from the file that
-`import` in config.toml, UTWM_CONFIG or --config names.";
+Configuration lives in ~/.config/window-manager: config.json, a Rectangle Pro
+export, and config.toml, the app's own settings. `config <export.json>` or the
+menu's Choose configuration… uses another export on this machine from then on;
+--config or UTWM_CONFIG names one for a single run.";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Run,
     Check,
+    Config(ConfigAction),
     Probe { seconds: u64 },
     Reload,
     Pause,
@@ -35,6 +38,17 @@ pub enum Command {
     Install,
     Version,
     Help,
+}
+
+/// What `config` does with the configuration this machine uses.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ConfigAction {
+    /// Shows the one chosen, if any.
+    Show,
+    /// Uses this export from now on.
+    Choose(PathBuf),
+    /// Forgets the choice, so the usual places count again.
+    Default,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -68,6 +82,11 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Invocation, Strin
             }
             Command::Check
         }
+        Some("config") => Command::Config(match positional.next() {
+            None => ConfigAction::Show,
+            Some(arg) if arg == "--default" => ConfigAction::Default,
+            Some(path) => ConfigAction::Choose(PathBuf::from(path)),
+        }),
         Some("probe") => {
             let seconds = match positional.next() {
                 Some(text) => text
@@ -111,6 +130,7 @@ pub fn run(invocation: Invocation) -> ExitCode {
             ExitCode::SUCCESS
         }
         Command::Check => check(invocation.config),
+        Command::Config(action) => configure(action),
         #[cfg(target_os = "linux")]
         Command::Install => install(),
         #[cfg(not(target_os = "linux"))]
@@ -164,7 +184,8 @@ fn check(config: Option<PathBuf>) -> ExitCode {
         print_to_terminal("no home directory");
         return ExitCode::FAILURE;
     };
-    match utwm_config::load(&home, config.as_deref()) {
+    let named = utwm_config::load::named(&home, config.as_deref());
+    match utwm_config::load(&home, named.as_deref()) {
         Ok(resolved) => {
             print_to_terminal(utwm_config::report::render(&resolved).trim_end());
             ExitCode::SUCCESS
@@ -174,6 +195,55 @@ fn check(config: Option<PathBuf>) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Shows, chooses or forgets the configuration this machine uses. A choice
+/// is checked before it is remembered, and the running app reloads at once.
+fn configure(action: ConfigAction) -> ExitCode {
+    let Some(home) = home() else {
+        print_to_terminal("no home directory");
+        return ExitCode::FAILURE;
+    };
+    let file = utwm_config::load::chosen_file(&home);
+    let path = match action {
+        ConfigAction::Show => {
+            print_to_terminal(&match utwm_config::load::read_chosen(&file) {
+                Some(path) => format!("{} (chosen for this machine)", path.display()),
+                None => "None chosen for this machine; `check` shows where the configuration comes from."
+                    .to_owned(),
+            });
+            return ExitCode::SUCCESS;
+        }
+        ConfigAction::Choose(path) => {
+            let path = utwm_config::overrides::expand_home(&path.to_string_lossy(), &home);
+            let path = std::path::absolute(&path).unwrap_or(path);
+            match utwm_config::load(&home, Some(&path)) {
+                Ok(resolved) => print_to_terminal(&format!(
+                    "Chosen for this machine: {} shortcuts {}",
+                    resolved.bindings.len(),
+                    resolved.source.describe()
+                )),
+                Err(error) => {
+                    print_to_terminal(&format!("error: {error}"));
+                    return ExitCode::FAILURE;
+                }
+            }
+            Some(path)
+        }
+        ConfigAction::Default => {
+            print_to_terminal(
+                "This machine looks in the usual places again; `check` shows what it finds.",
+            );
+            None
+        }
+    };
+    if let Err(error) = utwm_config::load::write_chosen(&file, path.as_deref()) {
+        print_to_terminal(&format!("could not remember the choice: {error}"));
+        return ExitCode::FAILURE;
+    }
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    let _ = crate::platform::send_control(crate::platform::Control::Reload);
+    ExitCode::SUCCESS
 }
 
 /// Installs this copy for the user, as a release's download is installed:
@@ -221,7 +291,8 @@ fn probe(config: Option<PathBuf>, seconds: u64) -> ExitCode {
         println!("no home directory");
         return ExitCode::FAILURE;
     };
-    let resolved = match utwm_config::load(&home, config.as_deref()) {
+    let named = utwm_config::load::named(&home, config.as_deref());
+    let resolved = match utwm_config::load(&home, named.as_deref()) {
         Ok(resolved) => resolved,
         Err(error) => {
             println!("error: {error}");
@@ -335,6 +406,25 @@ mod tests {
         assert!(parse_args(&["frobnicate"]).is_err());
         assert!(parse_args(&["quit", "now"]).is_err());
         assert!(parse_args(&["--config"]).is_err());
+    }
+
+    #[test]
+    fn config_shows_chooses_or_goes_back_to_the_default() {
+        assert_eq!(
+            parse_args(&["config"]).map(|i| i.command),
+            Ok(Command::Config(ConfigAction::Show))
+        );
+        assert_eq!(
+            parse_args(&["config", "x.json"]).map(|i| i.command),
+            Ok(Command::Config(ConfigAction::Choose(PathBuf::from(
+                "x.json"
+            ))))
+        );
+        assert_eq!(
+            parse_args(&["config", "--default"]).map(|i| i.command),
+            Ok(Command::Config(ConfigAction::Default))
+        );
+        assert!(parse_args(&["config", "a.json", "b.json"]).is_err());
     }
 
     #[test]
