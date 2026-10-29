@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.2.0...v0.2.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* give the focus back when the tray menu closes ([#13](https://github.com/johncarmack1984/universal-tiling-window-manager/issues/13)) ([1e4e9f8](https://github.com/johncarmack1984/universal-tiling-window-manager/commit/1e4e9f89004891d2bded080f5fbdc2b8dfda2b47))
+
 ## [0.2.0](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.1.0...v0.2.0) (2026-10-26)
 
 
