@@ -25,8 +25,9 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
     // A bad export or overrides file shouldn't stop the app: it starts on
     // Rectangle's defaults and says why in the tray.
     let overrides = load::load_overrides(&home).unwrap_or_default();
-    let watched = load::watched_paths(&home, explicit_config.as_deref(), &overrides);
-    let (config, load_error) = match load::load(&home, explicit_config.as_deref()) {
+    let named = load::named(&home, explicit_config.as_deref());
+    let watched = load::watched_paths(&home, named.as_deref(), &overrides);
+    let (config, load_error) = match load::load(&home, named.as_deref()) {
         Ok(config) => (config, None),
         Err(error) => {
             tracing::warn!(%error, "configuration not loaded; using the default shortcuts");
@@ -47,7 +48,6 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
         home,
         explicit_config,
         watched: Arc::new(Mutex::new(watched)),
-        #[cfg(target_os = "linux")]
         commands: commands.clone(),
     });
 
@@ -60,6 +60,8 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
         }))
         // Reads the endpoint and the public key from tauri.conf.json.
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // The file picker behind Choose configuration….
+        .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             // A menu bar app: no Dock icon and no menu bar of its own.
             #[cfg(target_os = "macos")]

@@ -2,6 +2,7 @@
 //! Rectangle's menu: every action with its shortcut, grouped, then the app's
 //! own switches.
 
+use std::path::Path;
 use std::sync::mpsc::Sender;
 
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
@@ -43,14 +44,19 @@ pub struct UpdatesLine {
 }
 
 /// One line saying where the shortcuts came from and how many bound.
-pub fn status_line(config: &Resolved, error: Option<&str>, refused: usize) -> String {
+pub fn status_line(config: &Resolved, error: Option<&str>, refused: usize, home: &Path) -> String {
     if let Some(error) = error {
         return format!("Config error, keeping previous shortcuts: {error}");
     }
     let count = config.bindings.len();
-    let shortcuts = match &config.source.kind {
-        Some(kind) => format!("{count} shortcuts imported from {}", kind.label()),
-        None => format!("{count} default shortcuts"),
+    let shortcuts = match (&config.source.kind, &config.source.path) {
+        (Some(kind), _) => format!("{count} shortcuts imported from {}", kind.label()),
+        // Nothing was where the config goes, so the line says where that is.
+        (None, Some(path)) => format!(
+            "{count} default shortcuts: nothing at {}",
+            tilde(path, home)
+        ),
+        (None, None) => format!("{count} default shortcuts"),
     };
     let skipped = if config.skipped.is_empty() {
         String::new()
@@ -63,6 +69,14 @@ pub fn status_line(config: &Resolved, error: Option<&str>, refused: usize) -> St
         format!(", {refused} taken by other apps")
     };
     format!("{shortcuts}{skipped}{refused}")
+}
+
+/// `path` with the home folder written as `~`.
+fn tilde(path: &Path, home: &Path) -> String {
+    match path.strip_prefix(home) {
+        Ok(rest) => Path::new("~").join(rest).display().to_string(),
+        Err(_) => path.display().to_string(),
+    }
 }
 
 /// A chord the way this platform's keyboard labels it: `Ctrl+Alt+Left` on
@@ -149,6 +163,7 @@ fn command_for(id: &str) -> Option<Command> {
     match id {
         "pause" => Some(Command::TogglePause),
         "reload" => Some(Command::Reload),
+        "choose-config" => Some(Command::ChooseConfig),
         "open-config" => Some(Command::OpenConfigFolder),
         "autostart" => Some(Command::ToggleAutostart),
         #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -308,6 +323,13 @@ fn build_menu(
     let pause =
         CheckMenuItem::with_id(app, "pause", "Pause shortcuts", true, paused, None::<&str>)?;
     let reload = MenuItem::with_id(app, "reload", "Reload configuration", true, None::<&str>)?;
+    let choose = MenuItem::with_id(
+        app,
+        "choose-config",
+        "Choose configuration…",
+        true,
+        None::<&str>,
+    )?;
     let open = MenuItem::with_id(
         app,
         "open-config",
@@ -325,7 +347,7 @@ fn build_menu(
     )?;
     let separator_2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let items: [&dyn IsMenuItem<R>; 5] = [&separator, &pause, &reload, &open, &autostart];
+    let items: [&dyn IsMenuItem<R>; 6] = [&separator, &pause, &reload, &choose, &open, &autostart];
     menu.append_items(&items)?;
     if let Some(updates) = updates {
         menu.append(&MenuItem::with_id(

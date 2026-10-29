@@ -92,7 +92,7 @@ These have no shortcut until you give them one:
 
 ## Configuration
 
-Everything lives in `~/.config/universal-tiling-window-manager/config.toml`. The file is optional, and so is every key in it. Top-level keys are for Windows, the `[mac]` table is for the Mac and the `[linux]` table is for Linux, so one file in your dotfiles serves every machine. The running app notices a change within a couple of seconds; **Reload configuration** in its menu does it right away. Copies from before Linux support reject a `[linux]` table and fall back to the default shortcuts, so update every machine before adding one.
+Everything lives in `~/.config/window-manager`: `config.json` is the Rectangle Pro config to import (below), and `config.toml` holds the app's own settings. Both are optional, and so is every key in config.toml. Its top-level keys are for Windows, the `[mac]` table is for the Mac and the `[linux]` table is for Linux, so one file in your dotfiles serves every machine. The running app notices a change within a couple of seconds; **Reload configuration** in its menu does it right away. A config.toml in `~/.config/universal-tiling-window-manager`, where earlier versions kept it, still counts while `~/.config/window-manager` has none. Copies from before Linux support reject a `[linux]` table and fall back to the default shortcuts, so update every machine before adding one.
 
 ```toml
 # A Rectangle Pro config to import, if it isn't at the usual path (below).
@@ -136,7 +136,11 @@ lastTwoThirds = "ctrl+alt+super+t"
 
 ### Importing a Rectangle Pro config
 
-Export it from Rectangle Pro (Settings → General → Export) and put the file at `~/.config/rectangle-pro/RectangleProConfig.json`, or name it with `import` in config.toml. Its shortcuts, gaps, custom positions and ignored apps replace the defaults, and config.toml still applies on top. A shortcut it gives several actions cycles through them on repeated presses.
+Export it from Rectangle Pro (Settings → General → Export) and save it as `~/.config/window-manager/config.json`. Its shortcuts, gaps, custom positions and ignored apps replace the defaults, and config.toml still applies on top. A shortcut it gives several actions cycles through them on repeated presses.
+
+To keep it somewhere else, pick it with **Choose configuration…** in the app's menu, or run `universal-tiling-window-manager config <path>`. The machine remembers the choice through restarts and updates, in `%LOCALAPPDATA%\window-manager\config-path` on Windows, `~/Library/Application Support/window-manager/config-path` on the Mac and `~/.local/state/window-manager/config-path` on Linux; `config` shows it, and `config --default` forgets it. `import` in config.toml names a file for every machine that shares the config.toml, and `--config` or `UTWM_CONFIG` names one for a single run.
+
+The first of these wins: `--config` or `UTWM_CONFIG`; the file chosen on the machine; `import`; `~/.config/window-manager/config.json`; then `~/.config/rectangle-pro/RectangleProConfig.json` and free Rectangle's `~/.config/rectangle/RectangleConfig.json`, where earlier versions looked. With none of them, the app runs Rectangle's default shortcuts, and the first line of its menu says where it looked.
 
 With an imported config, a repeated half can move on to the next display instead of cycling sizes: a second ⌃⌥← puts the window in the right half of the display to the left, a third press in that display's left half, and at the outermost display it stays put; →, ↑ and ↓ work the same way.
 
@@ -176,6 +180,8 @@ universal-tiling-window-manager [--config <export.json>] [command]
 
   (none)                run in the tray (the menu bar on the Mac)
   check [export.json]   show what each shortcut becomes on this machine
+  config [export.json]  show or choose the configuration this machine uses
+  config --default      look for the configuration in the usual places again
   probe [seconds]       log every key the keyboard delivers (default 60s; Windows)
   reload                make the running instance re-read its configuration
   pause                 pause or resume the running instance's shortcuts
@@ -185,7 +191,7 @@ universal-tiling-window-manager [--config <export.json>] [command]
   version               print the version
 ```
 
-The log is at `%LOCALAPPDATA%\universal-tiling-window-manager\log.txt` on Windows, `~/Library/Logs/universal-tiling-window-manager/log.txt` on the Mac and `~/.local/state/universal-tiling-window-manager/log.txt` on Linux; set `UTWM_LOG=debug` to see every shortcut and where each window landed.
+The log is at `%LOCALAPPDATA%\window-manager\log.txt` on Windows, `~/Library/Logs/window-manager/log.txt` on the Mac and `~/.local/state/window-manager/log.txt` on Linux; set `UTWM_LOG=debug` to see every shortcut and where each window landed.
 
 ## Development
 

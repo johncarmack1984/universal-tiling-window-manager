@@ -102,15 +102,17 @@ pub fn foreground_root() -> Option<Hwnd> {
     Some(handle(if root.is_null() { foreground } else { root }))
 }
 
-/// Whether the focus sits on one of this app's own windows with no menu open,
-/// where the tray leaves it once its menu closes. While it does, Windows keeps
-/// the keyboard from this app's own hook, so no shortcut works until another
-/// window has the focus.
+/// Whether the focus sits on one of this app's own hidden windows with no menu
+/// open, where the tray leaves it once its menu closes. While it does, Windows
+/// keeps the keyboard from this app's own hook, so no shortcut works until
+/// another window has the focus. A window of the app's that shows, like the
+/// file picker, keeps it.
 pub fn focus_left_on_own_window() -> bool {
     let Some(root) = foreground_root() else {
         return false;
     };
-    if !is_own(root) {
+    // SAFETY: plain query on a window handle.
+    if !is_own(root) || unsafe { IsWindowVisible(raw(root)) } != 0 {
         return false;
     }
     let mut info = GUITHREADINFO {
