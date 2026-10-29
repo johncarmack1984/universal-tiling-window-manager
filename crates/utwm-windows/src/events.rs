@@ -1,7 +1,8 @@
 //! System notifications the app reacts to, on a thread of their own:
 //! windows being destroyed (to drop their history), the foreground changing (so
-//! the tray menu knows which window it is for), and the session unlocking or the
-//! machine resuming (when the keyboard hook gets re-installed).
+//! the tray menu knows which window it is for), the tray menu closing (when that
+//! window gets the focus back), and the session unlocking or the machine resuming
+//! (when the keyboard hook gets re-installed).
 
 use std::cell::RefCell;
 use std::thread::JoinHandle;
@@ -11,14 +12,15 @@ use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::RemoteDesktop::{
     NOTIFY_FOR_THIS_SESSION, WTSRegisterSessionNotification, WTSUnRegisterSessionNotification,
 };
-use windows_sys::Win32::System::Threading::GetCurrentThreadId;
+use windows_sys::Win32::System::Threading::{GetCurrentProcessId, GetCurrentThreadId};
 use windows_sys::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CHILDID_SELF, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
-    EVENT_OBJECT_DESTROY, EVENT_SYSTEM_FOREGROUND, FindWindowW, GetMessageW, MSG, OBJID_WINDOW,
-    PBT_APMRESUMEAUTOMATIC, PostMessageW, PostThreadMessageW, RegisterClassExW, TranslateMessage,
-    WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_APP, WM_DISPLAYCHANGE, WM_POWERBROADCAST,
-    WM_QUIT, WM_WTSSESSION_CHANGE, WNDCLASSEXW, WS_OVERLAPPED, WTS_SESSION_UNLOCK,
+    EVENT_OBJECT_DESTROY, EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MENUEND, FindWindowW, GetMessageW,
+    KillTimer, MSG, OBJID_WINDOW, PBT_APMRESUMEAUTOMATIC, PostMessageW, PostThreadMessageW,
+    RegisterClassExW, SetTimer, TranslateMessage, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
+    WM_APP, WM_DISPLAYCHANGE, WM_POWERBROADCAST, WM_QUIT, WM_WTSSESSION_CHANGE, WNDCLASSEXW,
+    WS_OVERLAPPED, WTS_SESSION_UNLOCK,
 };
 
 use crate::{Hwnd, wide};
@@ -27,6 +29,9 @@ use crate::{Hwnd, wide};
 pub enum SystemEvent {
     WindowDestroyed(Hwnd),
     Foreground(Hwnd),
+    /// One of this app's menus, the tray's, closed a moment ago. It took the
+    /// focus to show itself, and leaves it with the tray's hidden window.
+    MenuClosed,
     SessionUnlocked,
     Resumed,
     DisplaysChanged,
@@ -65,6 +70,11 @@ impl Control {
 /// The class of the hidden window that receives notifications; the command
 /// line finds the running instance by it.
 const CLASS_NAME: &str = "UniversalTilingWindowManagerEvents";
+
+/// How long after one of this app's menus closes it reports
+/// [`SystemEvent::MenuClosed`]: long enough for a window the chosen item opened
+/// (Explorer, for the configuration folder) to take the focus first.
+const MENU_SETTLE_MS: u32 = 500;
 
 /// Receives system events, on the events thread.
 pub type Reporter = Box<dyn Fn(SystemEvent) + Send + 'static>;
@@ -154,6 +164,20 @@ fn run(report: Reporter, ready: std::sync::mpsc::Sender<u32>) {
             WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
         )
     };
+    // The tray menu, unlike every other window these hooks follow, is this
+    // app's own.
+    // SAFETY: as above.
+    let menu_hook = unsafe {
+        SetWinEventHook(
+            EVENT_SYSTEM_MENUEND,
+            EVENT_SYSTEM_MENUEND,
+            std::ptr::null_mut(),
+            Some(menu_ended),
+            GetCurrentProcessId(),
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        )
+    };
 
     // Session and power notifications need a real top-level window; it is
     // never shown.
@@ -186,6 +210,7 @@ fn run(report: Reporter, ready: std::sync::mpsc::Sender<u32>) {
         }
         UnhookWinEvent(destroy_hook);
         UnhookWinEvent(foreground_hook);
+        UnhookWinEvent(menu_hook);
     }
 }
 
@@ -265,4 +290,24 @@ unsafe extern "system" fn win_event(
         EVENT_SYSTEM_FOREGROUND => emit(SystemEvent::Foreground(hwnd as Hwnd)),
         _ => {}
     }
+}
+
+/// One of this app's menus closed; it is reported once things settle.
+unsafe extern "system" fn menu_ended(
+    _hook: HWINEVENTHOOK,
+    _event: u32,
+    _hwnd: HWND,
+    _object: i32,
+    _child: i32,
+    _thread: u32,
+    _time: u32,
+) {
+    // SAFETY: a timer on this thread, whose message loop calls `menu_settled`.
+    unsafe { SetTimer(std::ptr::null_mut(), 0, MENU_SETTLE_MS, Some(menu_settled)) };
+}
+
+unsafe extern "system" fn menu_settled(_hwnd: HWND, _message: u32, timer: usize, _time: u32) {
+    // SAFETY: stops the timer that called this, so it fires once.
+    unsafe { KillTimer(std::ptr::null_mut(), timer) };
+    emit(SystemEvent::MenuClosed);
 }

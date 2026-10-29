@@ -21,10 +21,11 @@ use windows_sys::Win32::System::Threading::{
 };
 use windows_sys::Win32::UI::Shell::{QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GA_ROOT, GWL_EXSTYLE, GWL_STYLE, GetAncestor, GetClassNameW, GetForegroundWindow,
-    GetWindowLongPtrW, GetWindowPlacement, GetWindowRect, GetWindowThreadProcessId,
-    IsHungAppWindow, IsIconic, IsWindowVisible, IsZoomed, SW_RESTORE, SWP_NOACTIVATE,
-    SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SetWindowPlacement, SetWindowPos, WINDOWPLACEMENT,
+    EnumWindows, GA_ROOT, GUI_INMENUMODE, GUI_POPUPMENUMODE, GUITHREADINFO, GWL_EXSTYLE, GWL_STYLE,
+    GetAncestor, GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetWindowLongPtrW,
+    GetWindowPlacement, GetWindowRect, GetWindowThreadProcessId, IsHungAppWindow, IsIconic,
+    IsWindowVisible, IsZoomed, SW_RESTORE, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+    SWP_NOZORDER, SetForegroundWindow, SetWindowPlacement, SetWindowPos, WINDOWPLACEMENT,
     WPF_RESTORETOMAXIMIZED, WS_CAPTION, WS_CHILD, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW, WS_POPUP, WS_THICKFRAME,
 };
@@ -101,6 +102,39 @@ pub fn foreground_root() -> Option<Hwnd> {
     Some(handle(if root.is_null() { foreground } else { root }))
 }
 
+/// Whether the focus sits on one of this app's own windows with no menu open,
+/// where the tray leaves it once its menu closes. While it does, Windows keeps
+/// the keyboard from this app's own hook, so no shortcut works until another
+/// window has the focus.
+pub fn focus_left_on_own_window() -> bool {
+    let Some(root) = foreground_root() else {
+        return false;
+    };
+    if !is_own(root) {
+        return false;
+    }
+    let mut info = GUITHREADINFO {
+        cbSize: u32::try_from(std::mem::size_of::<GUITHREADINFO>()).unwrap_or(72),
+        ..Default::default()
+    };
+    // SAFETY: `info` is a GUITHREADINFO with its size set, for the thread that
+    // owns a window the system just returned.
+    let read = unsafe {
+        GetGUIThreadInfo(
+            GetWindowThreadProcessId(raw(root), std::ptr::null_mut()),
+            &mut info,
+        )
+    };
+    read != 0 && info.flags & (GUI_INMENUMODE | GUI_POPUPMENUMODE) == 0
+}
+
+/// Gives the window the focus. Windows allows it only while this app has the
+/// focus, as it does once the tray menu closes.
+pub fn activate(hwnd: Hwnd) -> bool {
+    // SAFETY: plain call on a window handle.
+    unsafe { SetForegroundWindow(raw(hwnd)) != 0 }
+}
+
 fn long(hwnd: Hwnd, index: i32) -> u32 {
     // SAFETY: reads a window long; an invalid handle yields 0.
     let value = unsafe { GetWindowLongPtrW(raw(hwnd), index) };
@@ -138,6 +172,12 @@ pub fn process_id(hwnd: Hwnd) -> u32 {
     pid
 }
 
+/// Whether the window is one of this app's own.
+fn is_own(hwnd: Hwnd) -> bool {
+    // SAFETY: no arguments.
+    process_id(hwnd) == unsafe { GetCurrentProcessId() }
+}
+
 /// Whether this app may act on the window: a visible, uncloaked, unminimized
 /// application window that isn't part of the shell or of this app. Cloaking
 /// also hides windows on other virtual desktops.
@@ -163,8 +203,7 @@ pub fn is_manageable(hwnd: Hwnd) -> bool {
     if style & WS_POPUP != 0 && style & WS_THICKFRAME == 0 && style & WS_CAPTION != WS_CAPTION {
         return false;
     }
-    // SAFETY: no arguments.
-    if process_id(hwnd) == unsafe { GetCurrentProcessId() } {
+    if is_own(hwnd) {
         return false;
     }
     !SHELL_CLASSES.contains(&class_name(hwnd).as_str())
