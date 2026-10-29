@@ -103,9 +103,10 @@ pub struct Controller {
     updates: Option<updates::Updates>,
     update_state: updates::State,
     /// The last application window in the foreground, for tray menu actions:
-    /// by the time a menu item is clicked on Windows the tray itself has the
-    /// focus. Neither the Mac's menu bar nor GNOME's top bar takes it, so
-    /// those keep none and act on the foreground window.
+    /// on Windows the tray takes the focus to show its menu, and this window
+    /// gets it back once the menu closes. Neither the Mac's menu bar nor
+    /// GNOME's top bar takes it, so those keep none and act on the foreground
+    /// window.
     last_target: Option<Window>,
 }
 
@@ -186,11 +187,7 @@ impl Controller {
             match command {
                 Command::Binding(index) => self.binding(index),
                 Command::Menu(target) => {
-                    let target_window = self
-                        .last_target
-                        .filter(|candidate| window::is_manageable(*candidate))
-                        .or_else(window::foreground);
-                    if let Some(target_window) = target_window {
+                    if let Some(target_window) = self.menu_target() {
                         self.run_target(target_window, target);
                     }
                 }
@@ -320,6 +317,14 @@ impl Controller {
             tracing::debug!(%chord, ?target, "shortcut");
             self.run_target(target_window, target);
         }
+    }
+
+    /// The window a tray menu item acts on: the last application window in
+    /// the foreground, or the foreground window where the tray takes no focus.
+    fn menu_target(&self) -> Option<Window> {
+        self.last_target
+            .filter(|candidate| window::is_manageable(*candidate))
+            .or_else(window::foreground)
     }
 
     /// The app's name for `ignored_apps` (an executable name on Windows, a
@@ -481,12 +486,28 @@ impl Controller {
                     self.last_target = Some(hwnd);
                 }
             }
+            SystemEvent::MenuClosed => self.return_focus(),
             SystemEvent::SessionUnlocked | SystemEvent::Resumed => {
                 tracing::info!("re-installing the keyboard hook");
                 self.shortcuts.reinstall();
             }
             SystemEvent::DisplaysChanged => {}
             SystemEvent::Control(control) => self.control(control),
+        }
+    }
+
+    /// Gives the focus back to the window the tray menu acts on, if the menu
+    /// left it with the tray's hidden window: while one of this app's own
+    /// windows has it, Windows keeps the keyboard from the hook, and no
+    /// shortcut works until another window is clicked.
+    #[cfg(windows)]
+    fn return_focus(&self) {
+        if !window::focus_left_on_own_window() {
+            return;
+        }
+        if let Some(target_window) = self.menu_target() {
+            tracing::debug!("giving the focus back after the tray menu");
+            window::activate(target_window);
         }
     }
 
