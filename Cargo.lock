@@ -4641,7 +4641,7 @@ checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
 
 [[package]]
 name = "universal-tiling-window-manager"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "muda",
  "serde_json",
@@ -4699,7 +4699,7 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
 name = "utwm-bundle"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4709,7 +4709,7 @@ dependencies = [
 
 [[package]]
 name = "utwm-config"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "insta",
  "serde",
@@ -4720,7 +4720,7 @@ dependencies = [
 
 [[package]]
 name = "utwm-e2e"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "dispatch2",
  "objc2",
@@ -4739,7 +4739,7 @@ dependencies = [
 
 [[package]]
 name = "utwm-layout"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "insta",
  "utwm-config",
@@ -4747,7 +4747,7 @@ dependencies = [
 
 [[package]]
 name = "utwm-linux"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4759,7 +4759,7 @@ dependencies = [
 
 [[package]]
 name = "utwm-macos"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "dispatch2",
  "objc2",
@@ -4776,7 +4776,7 @@ dependencies = [
 
 [[package]]
 name = "utwm-windows"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "tracing",
  "utwm-config",

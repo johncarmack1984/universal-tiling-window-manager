@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.2.1...v0.3.0) (2026-10-29)
+
+
+### Features
+
+* choose where the configuration lives ([#15](https://github.com/johncarmack1984/universal-tiling-window-manager/issues/15)) ([8103f29](https://github.com/johncarmack1984/universal-tiling-window-manager/commit/8103f2993e0bf42c4d98e8998d2990a0ae7f077e))
+
 ## [0.2.1](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.2.0...v0.2.1) (2026-10-29)
 
 
