@@ -13,13 +13,34 @@ use crate::controller::{self, Command, Controller, Shared};
 use crate::platform::Shortcuts;
 use crate::{logging, poll, tray, updates};
 
-pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    explicit_config: Option<PathBuf>,
+    executable: crate::Executable,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Every coordinate this app reads or writes is a physical pixel. Tauri's
     // event loop asks for the same awareness; whichever call comes first wins.
     #[cfg(windows)]
     utwm_windows::monitors::ensure_per_monitor_dpi_awareness();
     let log_file = logging::init();
-    tracing::info!(version = env!("CARGO_PKG_VERSION"), log = ?log_file, "starting");
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), log = ?log_file, ?executable, "starting");
+    // Whose windows this copy can move: a release's tray app started by an
+    // administrator runs at High integrity with UI Access.
+    #[cfg(windows)]
+    match utwm_windows::token::Standing::current() {
+        Ok(standing) => tracing::info!(
+            integrity = standing.integrity_name(),
+            ui_access = standing.ui_access,
+            elevated = standing.elevated,
+            "access"
+        ),
+        Err(error) => tracing::warn!(%error, "can't read this process's access"),
+    }
+    #[cfg(windows)]
+    if executable == crate::Executable::Tray
+        && let Ok(exe) = std::env::current_exe()
+    {
+        crate::installed::adopt_start_at_login(&exe);
+    }
     let home = std::env::home_dir().ok_or("no home directory")?;
 
     // A bad export or overrides file shouldn't stop the app: it starts on
@@ -47,6 +68,7 @@ pub fn run(explicit_config: Option<PathBuf>) -> Result<(), Box<dyn std::error::E
         paused: AtomicBool::new(false),
         home,
         explicit_config,
+        executable,
         watched: Arc::new(Mutex::new(watched)),
         commands: commands.clone(),
     });

@@ -2,7 +2,8 @@
 //! running app on this platform. It opens a window of its own, presses
 //! shortcuts the way the keyboard does, and checks where the window lands. It
 //! never touches any other window. On Linux, `--headless` (`just e2e-headless`)
-//! runs it in a GNOME Shell of its own instead.
+//! runs it in a GNOME Shell of its own instead; on Windows, `--elevated`
+//! (`just e2e-elevated`) checks an administrator's window.
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -15,7 +16,8 @@ use std::process::ExitCode;
 
 #[cfg(windows)]
 fn main() -> ExitCode {
-    windows::run()
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    windows::run(&args)
 }
 
 #[cfg(target_os = "macos")]
