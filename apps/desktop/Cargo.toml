@@ -10,12 +10,32 @@ authors.workspace = true
 publish = false
 default-run = "universal-tiling-window-manager"
 
+# The app itself; each executable below is a few lines that start it.
+[lib]
+path = "src/lib.rs"
+
+# The command line, and with no command the tray app. Where a release's tray
+# app sits beside it, it starts that copy instead. Tauri's installer treats it
+# as the app's main executable: the one the Start menu, the installer's last
+# step and an update's restart run.
 [[bin]]
 name = "universal-tiling-window-manager"
 path = "src/main.rs"
 
+# A release's tray app, with UI Access in its manifest (build.rs), which lets
+# it move windows of apps running as administrator. Windows starts such a
+# copy only when it is signed and installed where only an administrator can
+# change it, so only the release job builds it, and the installer names it
+# Window Manager.exe; every other build runs the tray from the command line.
+[[bin]]
+name = "window-manager"
+path = "src/bin/window-manager.rs"
+required-features = ["ui-access"]
+
 [build-dependencies]
 tauri-build = { version = "=3.0.0-alpha.4", features = [] }
+# Links each executable's own manifest into it on Windows (build.rs).
+embed-resource = "3.0"
 
 [dependencies]
 utwm-config.workspace = true
@@ -62,6 +82,10 @@ muda = "=0.20.0"
 # Release builds embed their configuration; `cargo install` builds this way.
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+# Builds the tray app's UI Access executable, window-manager, as a release
+# ships it on Windows. Only the release job turns this on: unsigned, or
+# anywhere but Program Files, that executable won't start.
+ui-access = []
 
 [lints]
 workspace = true

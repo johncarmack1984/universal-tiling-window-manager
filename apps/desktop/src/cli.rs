@@ -119,7 +119,7 @@ pub fn print_to_terminal(text: &str) {
     println!("{text}");
 }
 
-pub fn run(invocation: Invocation) -> ExitCode {
+pub fn run(invocation: Invocation, executable: crate::Executable) -> ExitCode {
     match invocation.command {
         Command::Help => {
             print_to_terminal(USAGE);
@@ -158,18 +158,32 @@ pub fn run(invocation: Invocation) -> ExitCode {
         #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
         Command::Update => control(crate::platform::Control::Update),
         #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
-        Command::Run => match crate::app::run(invocation.config) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(error) => {
-                print_to_terminal(&format!("universal-tiling-window-manager: {error}"));
-                ExitCode::FAILURE
-            }
-        },
+        Command::Run => run_tray(invocation.config, executable),
         #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
         _ => {
+            let _ = executable;
             print_to_terminal(
                 "universal-tiling-window-manager runs on Windows, macOS and Linux; `check` works anywhere.",
             );
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Runs the tray app, or from a Windows release's command line starts the
+/// release's own tray app, which has the UI Access this copy lacks.
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+fn run_tray(config: Option<PathBuf>, executable: crate::Executable) -> ExitCode {
+    #[cfg(windows)]
+    if executable == crate::Executable::CommandLine
+        && let Some(tray) = crate::installed::tray_beside_this()
+    {
+        return crate::installed::start_tray(&tray, config.as_deref());
+    }
+    match crate::app::run(config, executable) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            print_to_terminal(&format!("universal-tiling-window-manager: {error}"));
             ExitCode::FAILURE
         }
     }

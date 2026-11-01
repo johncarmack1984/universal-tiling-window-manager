@@ -69,6 +69,10 @@ pub struct Shared {
     pub paused: AtomicBool,
     pub home: PathBuf,
     pub explicit_config: Option<PathBuf>,
+    /// Which executable runs the app: on Windows, Start at login runs a
+    /// release's tray app through the command line beside it.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub executable: crate::Executable,
     /// Files whose changes trigger a reload.
     pub watched: Arc<Mutex<Vec<PathBuf>>>,
     /// The controller's own channel: for the file picker's answer, and on
@@ -594,8 +598,11 @@ impl Controller {
 
     fn toggle_autostart(&mut self) {
         let enable = !platform::autostart::is_enabled();
-        let result =
-            std::env::current_exe().and_then(|exe| platform::autostart::set_enabled(enable, &exe));
+        let result = std::env::current_exe().and_then(|exe| {
+            #[cfg(windows)]
+            let exe = crate::installed::start_at_login_target(&exe, self.shared.executable);
+            platform::autostart::set_enabled(enable, &exe)
+        });
         if let Err(error) = result {
             tracing::warn!(%error, "could not change start at login");
             self.notify(&format!("Couldn't change Start at login: {error}"));

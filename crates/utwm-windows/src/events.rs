@@ -15,12 +15,13 @@ use windows_sys::Win32::System::RemoteDesktop::{
 use windows_sys::Win32::System::Threading::{GetCurrentProcessId, GetCurrentThreadId};
 use windows_sys::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CHILDID_SELF, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
-    EVENT_OBJECT_DESTROY, EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MENUEND, FindWindowW, GetMessageW,
-    KillTimer, MSG, OBJID_WINDOW, PBT_APMRESUMEAUTOMATIC, PostMessageW, PostThreadMessageW,
-    RegisterClassExW, SetTimer, TranslateMessage, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
-    WM_APP, WM_DISPLAYCHANGE, WM_POWERBROADCAST, WM_QUIT, WM_WTSSESSION_CHANGE, WNDCLASSEXW,
-    WS_OVERLAPPED, WTS_SESSION_UNLOCK,
+    CHILDID_SELF, ChangeWindowMessageFilterEx, CreateWindowExW, DefWindowProcW, DestroyWindow,
+    DispatchMessageW, EVENT_OBJECT_DESTROY, EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MENUEND,
+    FindWindowW, GetMessageW, GetWindowThreadProcessId, KillTimer, MSG, MSGFLT_ALLOW, OBJID_WINDOW,
+    PBT_APMRESUMEAUTOMATIC, PostMessageW, PostThreadMessageW, RegisterClassExW, SetTimer,
+    TranslateMessage, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_APP, WM_DISPLAYCHANGE,
+    WM_POWERBROADCAST, WM_QUIT, WM_WTSSESSION_CHANGE, WNDCLASSEXW, WS_OVERLAPPED,
+    WTS_SESSION_UNLOCK,
 };
 
 use crate::{Hwnd, wide};
@@ -51,6 +52,8 @@ pub enum Control {
 }
 
 impl Control {
+    const ALL: [Self; 4] = [Self::Quit, Self::Reload, Self::TogglePause, Self::Update];
+
     fn message(self) -> u32 {
         match self {
             Self::Quit => WM_APP + 10,
@@ -61,7 +64,7 @@ impl Control {
     }
 
     fn from_message(message: u32) -> Option<Self> {
-        [Self::Quit, Self::Reload, Self::TogglePause, Self::Update]
+        Self::ALL
             .into_iter()
             .find(|control| control.message() == message)
     }
@@ -81,14 +84,28 @@ pub type Reporter = Box<dyn Fn(SystemEvent) + Send + 'static>;
 
 /// Sends `control` to the running instance. Returns false if none is running.
 pub fn send_control(control: Control) -> bool {
+    let Some(window) = running_window() else {
+        return false;
+    };
+    // SAFETY: posts a plain message with no pointers to a window we found.
+    unsafe { PostMessageW(window, control.message(), 0, 0) != 0 }
+}
+
+/// The process of the running instance, if one is running.
+pub fn running_pid() -> Option<u32> {
+    let window = running_window()?;
+    let mut pid = 0_u32;
+    // SAFETY: `pid` is a valid out-pointer for a window we found.
+    unsafe { GetWindowThreadProcessId(window, &mut pid) };
+    (pid != 0).then_some(pid)
+}
+
+/// The running instance's hidden window.
+fn running_window() -> Option<HWND> {
     let class = wide(CLASS_NAME);
     // SAFETY: the class name outlives the call; a null title matches any.
     let window = unsafe { FindWindowW(class.as_ptr(), std::ptr::null()) };
-    if window.is_null() {
-        return false;
-    }
-    // SAFETY: posts a plain message with no pointers to a window we found.
-    unsafe { PostMessageW(window, control.message(), 0, 0) != 0 }
+    (!window.is_null()).then_some(window)
 }
 
 thread_local! {
@@ -229,7 +246,7 @@ fn create_hidden_window() -> HWND {
     unsafe { RegisterClassExW(&class) };
     let title = wide("universal-tiling-window-manager events");
     // SAFETY: the class was registered above; the strings outlive the call.
-    unsafe {
+    let window = unsafe {
         CreateWindowExW(
             0,
             class_name.as_ptr(),
@@ -244,7 +261,26 @@ fn create_hidden_window() -> HWND {
             instance,
             std::ptr::null(),
         )
+    };
+    // A release's tray app runs at High integrity, where Windows drops what a
+    // process below it posts, such as the command line run from a terminal
+    // that isn't elevated, while PostMessageW still reports success. The
+    // command line's four requests get through; nothing else does.
+    if !window.is_null() {
+        for control in Control::ALL {
+            // SAFETY: changes the filter of a window this thread owns; no
+            // pointers beyond the optional null one.
+            unsafe {
+                ChangeWindowMessageFilterEx(
+                    window,
+                    control.message(),
+                    MSGFLT_ALLOW,
+                    std::ptr::null_mut(),
+                )
+            };
+        }
     }
+    window
 }
 
 unsafe extern "system" fn window_proc(

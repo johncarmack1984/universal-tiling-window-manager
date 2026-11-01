@@ -69,6 +69,8 @@ jobs:
           ref: ${{ inputs.ref }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo clippy --locked --workspace -- -D warnings
+      # The release's tray app, with UI Access, builds only with this feature.
+      - run: cargo clippy --locked -p universal-tiling-window-manager --all-targets --features ui-access -- -D warnings
       - run: cargo test --locked --workspace
       - name: release build (what cargo install builds)
         run: cargo build --locked --release -p universal-tiling-window-manager
@@ -80,9 +82,11 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $out -notmatch 'Bindings \(22 chords\)') {
             throw "check did not report Rectangle's 22 default shortcuts"
           }
+      # Unsigned, so its tray app won't start, but built and packed as a
+      # release's is.
       - name: installer (what a release ships)
         working-directory: apps/desktop
-        run: npx --yes @tauri-apps/cli@3.0.0-alpha.5 build --bundles nsis --ci
+        run: npx --yes @tauri-apps/cli@3.0.0-alpha.5 build --bundles nsis --ci --features ui-access
 
   linux:
     runs-on: ubuntu-latest

@@ -288,15 +288,18 @@ jobs:
           if [ -n "${KEYCHAIN:-}" ]; then security delete-keychain "$KEYCHAIN"; fi
           rm -f "$RUNNER_TEMP/updater.key" "$RUNNER_TEMP/notary.p8"
 
-  # Tauri's CLI builds the release executable and the NSIS installer around
-  # it, marking the executable as the installer's, which is what the app checks
-  # before updating itself. The installer installs per user, with no
-  # administrator prompt, and is what the updater runs. Tauri Authenticode-signs
-  # everything it packs as it goes (the executable, NSIS's plugins and
-  # uninstaller, and the installer) as New Earth Technologies, through Azure
-  # Artifact Signing, where Microsoft holds the key. The job signs in to Azure
-  # as it does to AWS, with GitHub's OIDC token and no secret, which only a
-  # run on main can do.
+  # Tauri's CLI builds the release's two executables and the NSIS installer
+  # around them: the command line, and with the ui-access feature the tray
+  # app, whose manifest asks for UI Access so that it can move administrators'
+  # windows. The installer installs both for every user under Program Files,
+  # asking for an administrator, which is what Windows grants UI Access
+  # under, and is what the updater runs. Tauri Authenticode-signs everything
+  # it packs as it goes (both executables, NSIS's plugins and uninstaller,
+  # and the installer) as New Earth Technologies, through Azure Artifact
+  # Signing, where Microsoft holds the key; Windows starts a UI Access
+  # executable only when it is signed. The job signs in to Azure as it does
+  # to AWS, with GitHub's OIDC token and no secret, which only a run on main
+  # can do.
   build-windows:
     needs: [release, ci]
     if: ${{ needs.release.outputs.release_created == 'true' }}
@@ -408,16 +411,20 @@ jobs:
 
       - name: Build and sign the installer
         working-directory: apps/desktop
-        run: npx --yes @tauri-apps/cli@3.0.0-alpha.5 build --bundles nsis --ci --config "$RUNNER_TEMP/signing/tauri.signing.json"
+        run: npx --yes @tauri-apps/cli@3.0.0-alpha.5 build --bundles nsis --ci --features ui-access --config "$RUNNER_TEMP/signing/tauri.signing.json"
 
       # Nothing ships unless it is signed by New Earth Technologies and
       # timestamped: the certificate lasts three days, and the timestamp is
-      # what keeps a signature valid after it expires. The signed executable
-      # is only inside the installer, since Tauri puts the unsigned build back
-      # in target/release once it has packed it. So is the signed uninstaller,
-      # and NSIS packs it unsigned if signing it fails, without stopping.
-      # 7-Zip unpacks both to be checked; this installer's uninstaller takes
-      # 7-Zip 23.01 or later, which the image has.
+      # what keeps a signature valid after it expires, and with it the tray
+      # app's UI Access. The signed command line is only inside the installer,
+      # since Tauri puts the unsigned build back in target/release once it has
+      # packed it, and the tray app is packed under its Cargo name,
+      # window-manager.exe, which the installer changes. So is the signed
+      # uninstaller, and NSIS packs it unsigned if signing it fails, without
+      # stopping. 7-Zip unpacks all three to be checked; this installer's
+      # uninstaller takes 7-Zip 23.01 or later, which the image has. The tray
+      # app must ask for UI Access and the command line must not, or a
+      # terminal couldn't start it.
       - name: Check the signatures
         shell: pwsh
         run: |
@@ -425,23 +432,35 @@ jobs:
           if ($installer.Count -ne 1) { throw "expected one installer, found $($installer.Count)" }
           $installer = $installer[0].FullName
           $unpacked = Join-Path $env:RUNNER_TEMP unpacked
-          7z e $installer "-o$unpacked" -r universal-tiling-window-manager.exe uninstall.exe -y -bso0 -bsp0
+          7z e $installer "-o$unpacked" -r universal-tiling-window-manager.exe window-manager.exe uninstall.exe -y -bso0 -bsp0
           if ($LASTEXITCODE -ne 0) { throw '7-Zip could not unpack the installer' }
-          $unsigned = 0
-          foreach ($file in (Join-Path $unpacked universal-tiling-window-manager.exe), (Join-Path $unpacked uninstall.exe), $installer) {
+          $failed = 0
+          $commandLine = Join-Path $unpacked universal-tiling-window-manager.exe
+          $tray = Join-Path $unpacked window-manager.exe
+          foreach ($file in $commandLine, $tray, (Join-Path $unpacked uninstall.exe), $installer) {
             if (-not (Test-Path $file)) {
               "::error::the installer holds no $(Split-Path -Leaf $file) that 7-Zip could unpack"
-              $unsigned++
+              $failed++
               continue
             }
             $s = Get-AuthenticodeSignature $file
             "$(Split-Path -Leaf $file): $($s.Status), signed by $($s.SignerCertificate.Subject), timestamped by $($s.TimeStamperCertificate.Subject)"
             if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notlike 'CN=New Earth Technologies,*' -or -not $s.TimeStamperCertificate) {
               "::error::$(Split-Path -Leaf $file) is not signed by New Earth Technologies with a timestamp"
-              $unsigned++
+              $failed++
             }
           }
-          if ($unsigned) { exit 1 }
+          foreach ($check in @{ File = $commandLine; Wants = 'uiAccess="false"' }, @{ File = $tray; Wants = 'uiAccess="true"' }) {
+            if (-not (Test-Path $check.File)) { continue }
+            $text = [IO.File]::ReadAllText($check.File, [Text.Encoding]::Latin1)
+            if ($text.Contains($check.Wants)) {
+              "$(Split-Path -Leaf $check.File): manifest asks for $($check.Wants)"
+            } else {
+              "::error::$(Split-Path -Leaf $check.File)'s manifest doesn't ask for $($check.Wants)"
+              $failed++
+            }
+          }
+          if ($failed) { exit 1 }
 
       # Named like the Mac's files; the installer's updater signature records
       # the version, as the archive's does. It is made here, after

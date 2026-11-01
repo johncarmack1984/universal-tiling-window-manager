@@ -45,6 +45,11 @@ probe seconds="60":
 e2e:
     cargo run -q -p utwm-e2e
 
+# The same check with an administrator's window: from an elevated terminal, against an installed release.
+[windows]
+e2e-elevated:
+    cargo run -q -p utwm-e2e -- --elevated
+
 # The same check in a GNOME Shell of its own, with two virtual displays, leaving this session alone.
 [linux]
 e2e-headless:

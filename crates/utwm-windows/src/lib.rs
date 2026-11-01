@@ -14,7 +14,11 @@ pub mod console;
 pub mod events;
 pub mod hook;
 pub mod inject;
+pub mod install;
+pub mod launch;
 pub mod monitors;
+mod registry;
+pub mod token;
 pub mod window;
 
 pub use window::Hwnd;

@@ -13,7 +13,12 @@
 //! Last, a half must bring the window out of a real Windows maximize, and a
 //! lock key must pass through.
 //!
-//! Start the app first (`just run`).
+//! Start the app first (`just run`). The test window belongs to this check,
+//! so run from an elevated terminal it is an administrator's window, which an
+//! app moves only from the same integrity level or higher: a release's tray
+//! app, with UI Access, started by an administrator. `--elevated`
+//! (`just e2e-elevated`) insists on that case, and every run says what it
+//! found.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -22,15 +27,18 @@ use std::time::{Duration, Instant};
 use utwm_config::bindings::Resolved;
 use utwm_config::{ActionId, Chord, Modifiers, PhysicalKey, Platform, Target};
 use utwm_layout::{Engine, PixelRect, Plan, Request, Screen};
-use utwm_windows::events::{Control, send_control};
+use utwm_windows::events::{Control, running_pid, send_control};
+use utwm_windows::token::Standing;
 use utwm_windows::{inject, monitors, window};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_NUMLOCK};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, MSG, PostQuitMessage,
-    RegisterClassExW, SW_MAXIMIZE, SW_SHOW, SetForegroundWindow, ShowWindow, TranslateMessage,
-    WM_DESTROY, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetForegroundWindow, GetMessageW,
+    GetWindowThreadProcessId, MSG, PostQuitMessage, RegisterClassExW, SW_MAXIMIZE, SW_SHOW,
+    SetForegroundWindow, ShowWindow, TranslateMessage, WM_DESTROY, WNDCLASSEXW,
+    WS_OVERLAPPEDWINDOW,
 };
 
 /// The left-hand modifiers, as RustDesk sends them.
@@ -69,7 +77,15 @@ const PRESSES: &[ActionId] = &[
     ActionId::Restore,
 ];
 
-pub fn run() -> ExitCode {
+pub fn run(args: &[String]) -> ExitCode {
+    let elevated = match args {
+        [] => false,
+        [flag] if flag == "--elevated" => true,
+        _ => {
+            eprintln!("usage: utwm-e2e [--elevated]");
+            return ExitCode::from(2);
+        }
+    };
     // Physical pixels throughout, as the app sees the displays.
     monitors::ensure_per_monitor_dpi_awareness();
     let config = match load() {
@@ -82,6 +98,10 @@ pub fn run() -> ExitCode {
     // The app reads its configuration again, so both start from the same one.
     if !send_control(Control::Reload) {
         eprintln!("start universal-tiling-window-manager first");
+        return ExitCode::FAILURE;
+    }
+    if let Err(why) = reach(elevated) {
+        eprintln!("{why}");
         return ExitCode::FAILURE;
     }
     std::thread::sleep(Duration::from_millis(1500));
@@ -99,6 +119,54 @@ pub fn run() -> ExitCode {
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// Says what the app's process and the test window's, this one, may reach,
+/// reading only their integrity level, UI Access and elevation, and refuses
+/// a run whose window the app couldn't move, or with `elevated`, one whose
+/// window isn't an administrator's.
+fn reach(elevated: bool) -> Result<(), String> {
+    // A process below the app may not be let in to read the app's token.
+    let app = running_pid().and_then(|pid| Standing::of(pid).ok());
+    let this =
+        Standing::current().map_err(|error| format!("can't read this check's access: {error}"))?;
+    match &app {
+        Some(app) => println!("app          {}", describe(app)),
+        None => println!("app          its access can't be read from here"),
+    }
+    println!("test window  {}", describe(&this));
+    if elevated && !this.elevated {
+        return Err(
+            "--elevated checks an administrator's window: run it from an elevated terminal"
+                .to_owned(),
+        );
+    }
+    if let Some(app) = app
+        && this.integrity > app.integrity
+    {
+        return Err(format!(
+            "the app runs below the test window, so its shortcuts can't reach it: run the check from a terminal that isn't elevated, or install a release, whose tray app has UI Access{}",
+            if app.ui_access {
+                " (it has, but UI Access only reaches as high as the account starting it)"
+            } else {
+                ""
+            }
+        ));
+    }
+    Ok(())
+}
+
+fn describe(standing: &Standing) -> String {
+    format!(
+        "{} integrity{}{}",
+        standing.integrity_name(),
+        if standing.ui_access {
+            ", UI Access"
+        } else {
+            ""
+        },
+        if standing.elevated { ", elevated" } else { "" }
+    )
 }
 
 /// The app's own configuration, found the way the app finds it.
@@ -448,7 +516,7 @@ fn spawn_window() -> window::Hwnd {
         // SAFETY: shows and focuses the window just created.
         unsafe {
             ShowWindow(hwnd, SW_SHOW);
-            SetForegroundWindow(hwnd);
+            take_foreground(hwnd);
         }
         let _ = tx.send(hwnd as window::Hwnd);
         let mut msg = MSG::default();
@@ -461,6 +529,28 @@ fn spawn_window() -> window::Hwnd {
         }
     });
     rx.recv().unwrap_or(0)
+}
+
+/// Brings `hwnd`, a window of this thread's, to the front. Windows lets a
+/// process do that only while it has the user's input, which a check run from
+/// a terminal that isn't the active window lacks; sharing the active window's
+/// input state for the moment lends it that.
+///
+/// # Safety
+///
+/// `hwnd` must be a window this thread created.
+unsafe fn take_foreground(hwnd: HWND) {
+    // SAFETY: reads the active window and its thread; attaching to that
+    // thread's input is undone right after the call that needs it.
+    unsafe {
+        let active = GetWindowThreadProcessId(GetForegroundWindow(), std::ptr::null_mut());
+        let this = GetCurrentThreadId();
+        let attached = active != 0 && active != this && AttachThreadInput(this, active, 1) != 0;
+        SetForegroundWindow(hwnd);
+        if attached {
+            AttachThreadInput(this, active, 0);
+        }
+    }
 }
 
 fn numlock_on() -> bool {
