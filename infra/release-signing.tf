@@ -11,6 +11,29 @@
 #   api_issuer_id}. Both belong to the Apple account rather than to one app;
 #   lux keeps them, and this reads that copy instead of keeping a second one
 #   to rotate.
+#
+# The Windows build is signed through Azure Artifact Signing, which the
+# workflow reaches through GitHub's OIDC as well, with no secret. That side is
+# made by hand with the Azure CLI and kept out of this root, so applying it
+# needs no Azure sign-in:
+#
+# - the Artifact Signing account newearthsigning (resource group signing,
+#   West US 2, endpoint https://wus2.codesigning.azure.net) and its Public
+#   Trust certificate profile newearthpublic, whose certificates read
+#   "CN=New Earth Technologies, O=New Earth Technologies, L=Hollywood,
+#   S=California, C=US". They last three days, so every signature is
+#   timestamped.
+# - the Entra app registration universal-tiling-window-manager-release-signing,
+#   client ID 69a42c7d-d0f6-408d-bf01-82db599b34c5 in tenant
+#   47c77a73-f5f6-4bef-b9ea-569714d03d22, with no secret or certificate. Its
+#   one federated credential, main, trusts GitHub's token with audience
+#   api://AzureADTokenExchange for the same main-only subject as the role
+#   below:
+#   repo:johncarmack1984@20649979/universal-tiling-window-manager@1432647467:ref:refs/heads/main
+# - the Artifact Signing Certificate Profile Signer role for its service
+#   principal, scoped to the newearthpublic certificate profile alone. It has
+#   no role on the subscription, which is why release.yml signs in to Azure
+#   without one.
 
 data "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"

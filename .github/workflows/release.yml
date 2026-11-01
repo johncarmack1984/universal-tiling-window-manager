@@ -6,11 +6,12 @@ name: release
 # bumped manifest on main, and this run ships it: the release job cuts the
 # vX.Y.Z tag and a draft GitHub Release, and CI gates the tag. Then the Mac
 # app is built for Apple silicon and Intel, signed with the Developer ID and
-# notarized, and the Windows installer and the Linux executable are built
-# beside it. All three go on the draft with the updater's latest.json, and
-# publishing the draft comes last. Installed copies read latest.json from the
-# latest published release, so until then they see the release before it,
-# and a release that failed anywhere on the way never reaches them.
+# notarized, and the Windows installer, signed through Azure Artifact Signing,
+# and the Linux executable are built beside it. All three go on the draft
+# with the updater's latest.json, and publishing the draft comes last.
+# Installed copies read latest.json from the latest published release, so
+# until then they see the release before it, and a release that failed
+# anywhere on the way never reaches them.
 on:
   push:
     branches: [main]
@@ -290,8 +291,12 @@ jobs:
   # Tauri's CLI builds the release executable and the NSIS installer around
   # it, marking the executable as the installer's, which is what the app checks
   # before updating itself. The installer installs per user, with no
-  # administrator prompt, and is what the updater runs. It isn't
-  # Authenticode-signed, so SmartScreen questions a first install by hand.
+  # administrator prompt, and is what the updater runs. Tauri Authenticode-signs
+  # everything it packs as it goes (the executable, NSIS's plugins and
+  # uninstaller, and the installer) as New Earth Technologies, through Azure
+  # Artifact Signing, where Microsoft holds the key. The job signs in to Azure
+  # as it does to AWS, with GitHub's OIDC token and no secret, which only a
+  # run on main can do.
   build-windows:
     needs: [release, ci]
     if: ${{ needs.release.outputs.release_created == 'true' }}
@@ -299,7 +304,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      id-token: write # AWS OIDC, to read the updater signing key
+      id-token: write # OIDC, for AWS to read the updater signing key and for Azure to sign
     outputs:
       version: ${{ steps.package.outputs.version }}
     defaults:
@@ -328,12 +333,120 @@ jobs:
           printf '%s' "$secret" | jq -j '.key' > "$RUNNER_TEMP/updater.key"
           echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$password" >> "$GITHUB_ENV"
 
-      - name: Build the installer
-        working-directory: apps/desktop
-        run: npx --yes @tauri-apps/cli@3.0.0-alpha.5 build --bundles nsis --ci
+      # signtool signs through Artifact Signing's plugin, from Microsoft's
+      # NuGet package at a pinned version and hash; it runs on the image's
+      # .NET. The plugin needs signtool from Windows SDK 10.0.22621.755 or
+      # later, so the newest x64 one on the image signs. metadata.json names
+      # the account and certificate profile and leaves the plugin one way to
+      # sign in, the Azure CLI's, so a broken sign-in fails at once rather
+      # than after trying every other way; its JSON reader rejects a
+      # byte-order mark, which pwsh doesn't write. The overlay gives Tauri the
+      # command it signs each file with, %1 standing for the file, and stays
+      # out of tauri.conf.json, so a build from source never needs Azure.
+      - name: Set up Authenticode signing
+        shell: pwsh
+        env:
+          CLIENT_VERSION: 1.0.146
+          CLIENT_SHA256: 7761e5d8f31e54b764da21d33cd8b0a2940e1b05526c7dfcb5e94b0431426f70
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP signing
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $package = Join-Path $dir client.nupkg
+          Invoke-WebRequest -MaximumRetryCount 3 -OutFile $package `
+            "https://api.nuget.org/v3-flatcontainer/microsoft.artifactsigning.client/$env:CLIENT_VERSION/microsoft.artifactsigning.client.$env:CLIENT_VERSION.nupkg"
+          $hash = (Get-FileHash -Algorithm SHA256 $package).Hash
+          if ($hash -ne $env:CLIENT_SHA256) { throw "Microsoft.ArtifactSigning.Client $env:CLIENT_VERSION hashes to $hash, not $env:CLIENT_SHA256" }
+          [System.IO.Compression.ZipFile]::ExtractToDirectory($package, (Join-Path $dir client))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64\signtool.exe" |
+            Sort-Object { $_.VersionInfo.FileVersionRaw } | Select-Object -Last 1
+          if (-not $signtool -or $signtool.VersionInfo.FileVersionRaw -lt [version]'10.0.22621.755') {
+            throw 'no x64 signtool from Windows SDK 10.0.22621.755 or later'
+          }
+          "signtool $($signtool.VersionInfo.FileVersionRaw): $($signtool.FullName)"
+          $metadata = Join-Path $dir metadata.json
+          [ordered]@{
+            Endpoint               = 'https://wus2.codesigning.azure.net'
+            CodeSigningAccountName = 'newearthsigning'
+            CertificateProfileName = 'newearthpublic'
+            ExcludeCredentials     = @(
+              'EnvironmentCredential', 'ManagedIdentityCredential', 'WorkloadIdentityCredential',
+              'SharedTokenCacheCredential', 'VisualStudioCredential', 'VisualStudioCodeCredential',
+              'AzurePowerShellCredential', 'AzureDeveloperCliCredential', 'InteractiveBrowserCredential'
+            )
+          } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM $metadata
+          $command = @{
+            cmd  = $signtool.FullName
+            args = @(
+              'sign', '/v', '/fd', 'SHA256', '/tr', 'http://timestamp.acs.microsoft.com', '/td', 'SHA256',
+              '/d', 'Window Manager', '/dlib', (Join-Path $dir client\bin\x64\Azure.CodeSigning.Dlib.dll),
+              '/dmdf', $metadata, '%1'
+            )
+          }
+          $overlay = Join-Path $dir tauri.signing.json
+          @{ bundle = @{ windows = @{ signCommand = $command } } } | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM $overlay
+          Get-Content $overlay
 
-      # Named like the Mac's files; the installer's signature records the
-      # version, as the archive's does.
+      # The release job's own app registration, which may sign with the
+      # certificate profile and do nothing else: no secret, no subscription,
+      # and a federated credential that trusts main alone, all made by hand,
+      # as infra/release-signing.tf records.
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: 69a42c7d-d0f6-408d-bf01-82db599b34c5
+          tenant-id: 47c77a73-f5f6-4bef-b9ea-569714d03d22
+          allow-no-subscriptions: true
+
+      # The Azure CLI signed in with GitHub's OIDC token, which lasts five
+      # minutes and which the CLI can't renew, so after that it can get no
+      # token for a scope it hasn't fetched yet. The plugin asks it for the
+      # signing scope's token at every file, well into the build, so that
+      # token is fetched now, and the CLI hands the plugin its cached copy,
+      # good for an hour or so.
+      - name: Fetch the signing token
+        shell: pwsh
+        run: az account get-access-token --scope https://codesigning.azure.net/.default --output none
+
+      - name: Build and sign the installer
+        working-directory: apps/desktop
+        run: npx --yes @tauri-apps/cli@3.0.0-alpha.5 build --bundles nsis --ci --config "$RUNNER_TEMP/signing/tauri.signing.json"
+
+      # Nothing ships unless it is signed by New Earth Technologies and
+      # timestamped: the certificate lasts three days, and the timestamp is
+      # what keeps a signature valid after it expires. The signed executable
+      # is only inside the installer, since Tauri puts the unsigned build back
+      # in target/release once it has packed it. So is the signed uninstaller,
+      # and NSIS packs it unsigned if signing it fails, without stopping.
+      # 7-Zip unpacks both to be checked; this installer's uninstaller takes
+      # 7-Zip 23.01 or later, which the image has.
+      - name: Check the signatures
+        shell: pwsh
+        run: |
+          $installer = @(Get-ChildItem target/release/bundle/nsis/*_x64-setup.exe)
+          if ($installer.Count -ne 1) { throw "expected one installer, found $($installer.Count)" }
+          $installer = $installer[0].FullName
+          $unpacked = Join-Path $env:RUNNER_TEMP unpacked
+          7z e $installer "-o$unpacked" -r universal-tiling-window-manager.exe uninstall.exe -y -bso0 -bsp0
+          if ($LASTEXITCODE -ne 0) { throw '7-Zip could not unpack the installer' }
+          $unsigned = 0
+          foreach ($file in (Join-Path $unpacked universal-tiling-window-manager.exe), (Join-Path $unpacked uninstall.exe), $installer) {
+            if (-not (Test-Path $file)) {
+              "::error::the installer holds no $(Split-Path -Leaf $file) that 7-Zip could unpack"
+              $unsigned++
+              continue
+            }
+            $s = Get-AuthenticodeSignature $file
+            "$(Split-Path -Leaf $file): $($s.Status), signed by $($s.SignerCertificate.Subject), timestamped by $($s.TimeStamperCertificate.Subject)"
+            if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notlike 'CN=New Earth Technologies,*' -or -not $s.TimeStamperCertificate) {
+              "::error::$(Split-Path -Leaf $file) is not signed by New Earth Technologies with a timestamp"
+              $unsigned++
+            }
+          }
+          if ($unsigned) { exit 1 }
+
+      # Named like the Mac's files; the installer's updater signature records
+      # the version, as the archive's does. It is made here, after
+      # Authenticode signing changed the installer's bytes, so it covers the
+      # installer that ships.
       - name: Package the installer and sign the update
         id: package
         env:
