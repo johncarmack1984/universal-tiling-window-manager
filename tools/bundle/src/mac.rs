@@ -102,13 +102,19 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
 
 /// Builds the executable for both architectures and joins the two into one,
 /// in `target/universal-apple-darwin/release`, which it returns.
+///
+/// The architectures build one after the other. A single cargo run for both
+/// runs the app's build script for each at once, and tauri-build has each
+/// write the same files in `apps/desktop/gen/schemas` before copying them for
+/// its own build, so one can copy the other's half-written file and the app
+/// fails to compile ("EOF while parsing a value").
 fn build_universal(cargo: &OsStr, root: &Path, target: &Path) -> Result<PathBuf> {
-    let mut build = Command::new(cargo);
-    build.args(["build", "--release", "--locked", "-p", EXECUTABLE]);
     for architecture in ARCHITECTURES {
+        let mut build = Command::new(cargo);
+        build.args(["build", "--release", "--locked", "-p", EXECUTABLE]);
         build.args(["--target", architecture]);
+        run_tool(build.current_dir(root))?;
     }
-    run_tool(build.current_dir(root))?;
     let release = target.join("universal-apple-darwin").join("release");
     std::fs::create_dir_all(&release)?;
     let mut lipo = Command::new("lipo");
