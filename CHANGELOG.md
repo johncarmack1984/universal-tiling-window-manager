@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.3.0...v0.4.0) (2026-11-01)
+
+
+### Features
+
+* sign the Windows app and installer ([#17](https://github.com/johncarmack1984/universal-tiling-window-manager/issues/17)) ([162a588](https://github.com/johncarmack1984/universal-tiling-window-manager/commit/162a588ff4fd3940aa243be54b27c249affa4497))
+
 ## [0.3.0](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.2.1...v0.3.0) (2026-10-29)
 
 
