@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.4.0...v0.5.0) (2026-11-01)
+
+
+### Features
+
+* move elevated windows on Windows, installing for all users ([#20](https://github.com/johncarmack1984/universal-tiling-window-manager/issues/20)) ([54fc02c](https://github.com/johncarmack1984/universal-tiling-window-manager/commit/54fc02c533505cf68de95fe0624826ca19931feb))
+
 ## [0.4.0](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.3.0...v0.4.0) (2026-11-01)
 
 
