@@ -1,9 +1,11 @@
-//! A Windows release: the installer puts two executables in one folder under
-//! Program Files, for every user. `universal-tiling-window-manager.exe` is the
+//! A Windows release. Installed for everyone, under Program Files, it is two
+//! executables in one folder. `universal-tiling-window-manager.exe` is the
 //! command line. `Window Manager.exe` is the tray app, with UI Access in its
 //! manifest, so that started by an administrator it runs at High integrity
 //! and moves the administrator's elevated windows without being elevated
-//! itself.
+//! itself. Installed just for one user, in their own folder, where Windows
+//! grants no UI Access, it is the command line alone, which runs the tray
+//! itself, as a build from source does.
 //!
 //! Windows starts a UI Access executable only through the shell, never
 //! through CreateProcess, which is how terminals start programs, and the
@@ -132,12 +134,50 @@ fn starts_the_copy_in(command: &str, folder: &Path) -> bool {
     )
 }
 
+/// Whom a release installed a copy for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scope {
+    /// Everyone, under Program Files, with the tray app's UI Access: its
+    /// updates take an administrator.
+    AllUsers,
+    /// One user, in their own folder, where there is no UI Access to have:
+    /// its updates need no administrator.
+    ThisUser,
+}
+
+/// Whom a release installed the copy in `folder` for, going by the folder
+/// the installer recorded for each; `None` for a copy it didn't install.
+pub fn scope(folder: &Path) -> Option<Scope> {
+    let installed_here = |installed: Option<PathBuf>| {
+        installed.is_some_and(|installed| install::same_path(folder, &installed))
+    };
+    if installed_here(install::for_all_users()) {
+        Some(Scope::AllUsers)
+    } else if installed_here(install::for_this_user()) {
+        Some(Scope::ThisUser)
+    } else {
+        None
+    }
+}
+
+/// How an update's installer runs for a copy installed for `scope`: passive,
+/// a progress bar and nothing to click, starting the app again when done,
+/// and installing for the same users. For everyone it runs as an
+/// administrator, asking for one, which on a standard account takes an
+/// administrator's password.
+fn installer_start(scope: Scope) -> (launch::Start, &'static str) {
+    match scope {
+        Scope::AllUsers => (launch::Start::AsAdministrator, "/P /UPDATE /R /AllUsers"),
+        Scope::ThisUser => (launch::Start::AsIs, "/P /UPDATE /R /CurrentUser"),
+    }
+}
+
 /// Runs a release's installer, `bytes`, whose signature the updater has
-/// checked. It asks for an administrator, as installing for every user
-/// needs, and once it has replaced this copy it starts the command line,
-/// which starts the new tray app. Returns once the installer has started, or
-/// the prompt was declined, which [`declined`] tells apart.
-pub fn run_installer(bytes: &[u8], version: &str) -> std::io::Result<()> {
+/// checked, over this copy, installed for `scope`; once it has replaced this
+/// copy it starts the command line, which starts the app again. Returns once
+/// the installer has started, or its administrator prompt was declined,
+/// which [`declined`] tells apart.
+pub fn run_installer(bytes: &[u8], version: &str, scope: Scope) -> std::io::Result<()> {
     let temp = std::env::temp_dir();
     remove_earlier_downloads(&temp);
     let nanos = SystemTime::now()
@@ -147,13 +187,13 @@ pub fn run_installer(bytes: &[u8], version: &str) -> std::io::Result<()> {
         "{DOWNLOADS}{version}-{}-{nanos}",
         std::process::id()
     ));
-    // Passive: a progress bar and nothing to click; it starts the app again
-    // when it is done.
+    let (start, parameters) = installer_start(scope);
     launch::write_and_open(
         &folder,
         &format!("Window-Manager_{version}_x64-setup.exe"),
         bytes,
-        "/P /UPDATE /R",
+        parameters,
+        start,
     )
 }
 
@@ -230,6 +270,18 @@ mod tests {
         assert_eq!(without, tray);
         assert_eq!(with, command_line);
         assert_eq!(from_command_line, command_line);
+    }
+
+    #[test]
+    fn an_update_installs_for_the_same_users() {
+        assert_eq!(
+            installer_start(Scope::AllUsers),
+            (launch::Start::AsAdministrator, "/P /UPDATE /R /AllUsers")
+        );
+        assert_eq!(
+            installer_start(Scope::ThisUser),
+            (launch::Start::AsIs, "/P /UPDATE /R /CurrentUser")
+        );
     }
 
     #[test]
