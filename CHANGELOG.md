@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.5.0...v0.5.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* install just for you on Windows, without an administrator ([#22](https://github.com/johncarmack1984/universal-tiling-window-manager/issues/22)) ([e758ae9](https://github.com/johncarmack1984/universal-tiling-window-manager/commit/e758ae9b82e908145b0f4e84671dc9b5898a338d))
+
 ## [0.5.0](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.4.0...v0.5.0) (2026-11-01)
 
 
