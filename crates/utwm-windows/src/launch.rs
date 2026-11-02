@@ -42,7 +42,24 @@ use crate::token::Standing;
 /// would, and returns once it has started, or once the administrator prompt it
 /// needs has been answered: declining that fails with `ERROR_CANCELLED`.
 pub fn shell_open(program: &Path, parameters: &str) -> io::Result<()> {
-    let verb = wide(OsStr::new("open"));
+    shell_execute(Start::AsIs, program, parameters)
+}
+
+/// How the shell starts a program.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Start {
+    /// As a double-click would: with whatever privileges the program's
+    /// manifest asks for.
+    AsIs,
+    /// As an administrator, asking for one first: Run as administrator.
+    AsAdministrator,
+}
+
+fn shell_execute(start: Start, program: &Path, parameters: &str) -> io::Result<()> {
+    let verb = wide(OsStr::new(match start {
+        Start::AsIs => "open",
+        Start::AsAdministrator => "runas",
+    }));
     let file = wide(program.as_os_str());
     let parameters = wide(OsStr::new(parameters));
     let mut info = SHELLEXECUTEINFOW {
@@ -63,16 +80,23 @@ pub fn shell_open(program: &Path, parameters: &str) -> io::Result<()> {
     Ok(())
 }
 
-/// Writes `bytes` to a file named `name` in a new folder, `folder`, and opens
-/// it through the shell with `parameters` as [`shell_open`] does, making sure
-/// that what opens is `bytes` even when what runs is an installer that asks
-/// for an administrator. The folder carries this process's integrity level as
-/// its label, so no process below that level can create, change, rename or
-/// delete anything in it; the file is then held so that nothing at all can
-/// write, rename or delete it, or move a folder it is in, until it has
-/// started; and it opens by the path the held file has, with any junction on
-/// the way resolved.
-pub fn write_and_open(folder: &Path, name: &str, bytes: &[u8], parameters: &str) -> io::Result<()> {
+/// Writes `bytes` to a file named `name` in a new folder, `folder`, and starts
+/// it through the shell with `parameters`, as `start` says, making sure that
+/// what runs is `bytes` even when it runs as an administrator. The folder
+/// carries this process's integrity level as its label, so no process below
+/// that level can create, change, rename or delete anything in it; the file is
+/// then held so that nothing at all can write, rename or delete it, or move a
+/// folder it is in, until it has started; and it starts by the path the held
+/// file has, with any junction on the way resolved. Returns once it has
+/// started, or once the administrator prompt it needs has been answered:
+/// declining that fails with `ERROR_CANCELLED`.
+pub fn write_and_open(
+    folder: &Path,
+    name: &str,
+    bytes: &[u8],
+    parameters: &str,
+    start: Start,
+) -> io::Result<()> {
     create_guarded_folder(folder)?;
     let path = folder.join(name);
     OpenOptions::new()
@@ -89,7 +113,7 @@ pub fn write_and_open(folder: &Path, name: &str, bytes: &[u8], parameters: &str)
             path.display()
         )));
     }
-    let opened = shell_open(&final_path(&held)?, parameters);
+    let opened = shell_execute(start, &final_path(&held)?, parameters);
     drop(held);
     opened
 }

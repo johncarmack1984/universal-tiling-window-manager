@@ -5,10 +5,11 @@
 //! public key in tauri.conf.json. On the Mac it then replaces the bundle this
 //! copy runs from, and on Linux the executable, and the new copy starts once
 //! this one has quit. On Windows the release's installer runs in its passive
-//! mode, a progress bar with nothing to click, after the administrator prompt
-//! that installing for every user takes, and starts the app again itself;
-//! when the prompt is declined, the app goes on as it was, and doesn't ask
-//! about that release again until the menu or `update` asks.
+//! mode, a progress bar with nothing to click, installing for the same users
+//! as before, and starts the app again itself. For a copy installed for
+//! everyone that takes an administrator's prompt first; when it is declined,
+//! the app goes on as it was, and doesn't ask about that release again until
+//! the menu or `update` asks.
 //!
 //! Only a copy installed the way a release installs updates itself. On the
 //! Mac that is a copy running from an app bundle: the updater replaces
@@ -141,20 +142,16 @@ fn installed_copy(executable: &Path) -> Result<PathBuf, &'static str> {
 }
 
 /// What a release replaces, when this copy updates itself: on Windows, the
-/// folder the installer put it in, which the installer records for Settings →
-/// Apps.
+/// folder the installer put it in, for everyone or for this user, which the
+/// installer records for Settings → Apps.
 #[cfg(windows)]
 fn installed_copy(executable: &Path) -> Result<PathBuf, &'static str> {
     let folder = executable
         .parent()
         .ok_or("no folder above the executable")?;
-    let installed =
-        utwm_windows::install::for_all_users().ok_or("not installed by the installer")?;
-    if utwm_windows::install::same_path(folder, &installed) {
-        Ok(folder.to_path_buf())
-    } else {
-        Err("not the copy the installer put in place")
-    }
+    crate::installed::scope(folder)
+        .map(|_| folder.to_path_buf())
+        .ok_or("not a copy the installer put in place")
 }
 
 /// What a release replaces, when this copy updates itself: on Linux, the
@@ -267,8 +264,12 @@ async fn install_newer(
     // declined.
     #[cfg(windows)]
     {
+        let scope = executable
+            .parent()
+            .and_then(crate::installed::scope)
+            .ok_or("no longer a copy the installer put in place")?;
         let bytes = update.download(|_, _| {}, || {}).await?;
-        match crate::installed::run_installer(&bytes, &update.version) {
+        match crate::installed::run_installer(&bytes, &update.version, scope) {
             Ok(()) => Ok(Outcome::Installed(update.version)),
             Err(error) if crate::installed::declined(&error) => {
                 Ok(Outcome::Declined(update.version))

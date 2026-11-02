@@ -291,9 +291,10 @@ jobs:
   # Tauri's CLI builds the release's two executables and the NSIS installer
   # around them: the command line, and with the ui-access feature the tray
   # app, whose manifest asks for UI Access so that it can move administrators'
-  # windows. The installer installs both for every user under Program Files,
-  # asking for an administrator, which is what Windows grants UI Access
-  # under, and is what the updater runs. Tauri Authenticode-signs everything
+  # windows. The installer installs both for everyone under Program Files,
+  # with an administrator, which is where Windows grants UI Access, or the
+  # command line alone just for one user, without one, and is what the
+  # updater runs. Tauri Authenticode-signs everything
   # it packs as it goes (both executables, NSIS's plugins and uninstaller,
   # and the installer) as New Earth Technologies, through Azure Artifact
   # Signing, where Microsoft holds the key; Windows starts a UI Access
