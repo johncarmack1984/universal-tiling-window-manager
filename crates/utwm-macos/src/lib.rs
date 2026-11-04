@@ -19,6 +19,7 @@ pub mod control;
 pub mod hotkeys;
 pub mod monitors;
 pub mod permission;
+pub mod shield;
 pub mod window;
 
 pub use window::Window;
