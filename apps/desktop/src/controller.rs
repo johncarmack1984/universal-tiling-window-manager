@@ -95,6 +95,10 @@ pub struct Controller {
     /// shortcut pressed without it asks once rather than on every press.
     #[cfg(target_os = "macos")]
     asked_for_access: bool,
+    /// The app whose windows macOS withheld from the last shortcut, which the
+    /// menu's first line names until a shortcut finds a window again.
+    #[cfg(target_os = "macos")]
+    withheld: Option<String>,
     /// The GNOME settings holding refused chords, which the menu offers to
     /// free.
     #[cfg(target_os = "linux")]
@@ -141,6 +145,8 @@ impl Controller {
             engine: Engine::new(),
             #[cfg(target_os = "macos")]
             asked_for_access: false,
+            #[cfg(target_os = "macos")]
+            withheld: None,
             #[cfg(target_os = "linux")]
             gnome_held: Vec::new(),
             #[cfg(target_os = "linux")]
@@ -171,6 +177,11 @@ impl Controller {
             if let Some(name) = utwm_macos::conflicts::rectangle_running() {
                 return tray::Status::plain(format!(
                     "{name} is running too and answers the same shortcuts; quit it"
+                ));
+            }
+            if let Some(app) = &self.withheld {
+                return tray::Status::plain(format!(
+                    "macOS hides {app}'s windows from Accessibility, so none of them can move"
                 ));
             }
         }
@@ -277,6 +288,33 @@ impl Controller {
         }
     }
 
+    /// The window a shortcut found, noting whether macOS withheld it: the log
+    /// says so, and the menu's first line names the app until a shortcut
+    /// finds a window again.
+    #[cfg(target_os = "macos")]
+    fn note_withheld(
+        &mut self,
+        found: Result<Window, window::NoWindow>,
+        chord: &str,
+    ) -> Option<Window> {
+        let withheld = match &found {
+            Err(window::NoWindow::Withheld(app)) => {
+                tracing::warn!(
+                    %chord,
+                    %app,
+                    "macOS's Accessibility API gave the app in place of its window, so no window can move"
+                );
+                Some(app.clone())
+            }
+            _ => None,
+        };
+        if withheld != self.withheld {
+            self.withheld = withheld;
+            self.refresh_tray();
+        }
+        found.ok()
+    }
+
     fn control(&mut self, control: Control) {
         match control {
             Control::Quit => self.quit(),
@@ -314,7 +352,11 @@ impl Controller {
             }
             return;
         }
-        let Some(target_window) = window::foreground() else {
+        #[cfg(target_os = "macos")]
+        let found = self.note_withheld(window::foreground_or_why(), &chord);
+        #[cfg(not(target_os = "macos"))]
+        let found = window::foreground();
+        let Some(target_window) = found else {
             tracing::debug!(%chord, "no window to act on");
             return;
         };

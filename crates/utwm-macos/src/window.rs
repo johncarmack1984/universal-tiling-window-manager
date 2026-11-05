@@ -20,6 +20,7 @@ use objc2_core_graphics::{
 use utwm_layout::{PixelRect, Rect, Screen};
 
 use crate::ax::Element;
+use crate::shield;
 
 /// A window of another app.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -58,6 +59,15 @@ const SETTLE_WAITS: [Duration; 3] = [
     Duration::from_millis(25),
     Duration::from_millis(75),
     Duration::from_millis(200),
+];
+
+/// How long to give the apps to hear that the shield is down before each look
+/// for the window again.
+const SHIELD_WAITS: [Duration; 4] = [
+    Duration::from_millis(10),
+    Duration::from_millis(40),
+    Duration::from_millis(100),
+    Duration::from_millis(250),
 ];
 
 thread_local! {
@@ -104,26 +114,85 @@ pub fn limit_waits() {
     Element::system_wide().set_timeout(1.0);
 }
 
+/// Why [`foreground_or_why`] found no window.
+#[derive(Debug, PartialEq, Eq)]
+pub enum NoWindow {
+    /// No other app is in front, or it has no window this app may move.
+    Nothing,
+    /// The window server has the app's windows on screen, but the
+    /// Accessibility API answers with the app itself where its window should
+    /// be. While macOS does that no assistive app can reach the app's windows,
+    /// System Events included, so none of them can move. Holds the app's name.
+    Withheld(String),
+}
+
 /// The window keyboard actions apply to: the focused window of the frontmost
 /// app, or its first window, if this app may move it (Rectangle's
 /// `getFrontWindowElement`).
 pub fn foreground() -> Option<Window> {
-    let pid = NSWorkspace::sharedWorkspace()
-        .frontmostApplication()?
-        .processIdentifier();
+    foreground_or_why().ok()
+}
+
+/// [`foreground`], saying why when there is no window. When macOS withholds it
+/// because it left the lock screen's shield up with the screen unlocked, the
+/// shield comes down and the window is looked for again.
+pub fn foreground_or_why() -> Result<Window, NoWindow> {
+    let mut found = front_window();
+    if !matches!(found, Err(NoWindow::Withheld(_))) || !shield::lower_if_stuck() {
+        return found;
+    }
+    tracing::warn!(
+        "macOS left the lock screen's shield up with the screen unlocked, hiding every app's windows; lowered it"
+    );
+    for wait in SHIELD_WAITS {
+        std::thread::sleep(wait);
+        found = front_window();
+        if !matches!(found, Err(NoWindow::Withheld(_))) {
+            break;
+        }
+    }
+    found
+}
+
+/// The front app's window, or why there is none.
+fn front_window() -> Result<Window, NoWindow> {
+    let running = NSWorkspace::sharedWorkspace()
+        .frontmostApplication()
+        .ok_or(NoWindow::Nothing)?;
+    let pid = running.processIdentifier();
     if pid == own_pid() {
-        return None;
+        return Err(NoWindow::Nothing);
     }
     let app = Element::application(pid);
     let element = app
         .element("AXFocusedWindow")
-        .or_else(|| app.elements("AXWindows").into_iter().next())?;
-    let window = Window {
-        pid,
-        id: element.window_id()?,
+        .or_else(|| app.elements("AXWindows").into_iter().next())
+        .ok_or(NoWindow::Nothing)?;
+    let Some(id) = element.window_id() else {
+        return Err(withheld(&running, &element));
     };
+    let window = Window { pid, id };
     remember(window, &element);
-    is_manageable(window).then_some(window)
+    is_manageable(window)
+        .then_some(window)
+        .ok_or(NoWindow::Nothing)
+}
+
+/// What it means that the element the app gave for its window isn't one: its
+/// windows are withheld when the element is the app itself and the window
+/// server shows some of them on screen. Telling costs little: the app has just
+/// answered, and the window server's list needs no answer from it.
+fn withheld(running: &NSRunningApplication, given: &Element) -> NoWindow {
+    let pid = running.processIdentifier();
+    let is_app = given.string("AXRole").as_deref() == Some("AXApplication");
+    if !is_app || !on_screen_windows().iter().any(|&(owner, _)| owner == pid) {
+        return NoWindow::Nothing;
+    }
+    let name = running
+        .localizedName()
+        .or_else(|| running.bundleIdentifier())
+        .map_or_else(|| format!("process {pid}"), |name| name.to_string());
+    NoWindow::Withheld(name)
 }
 
 /// Whether this app may act on the window: a window (not a sheet) that isn't
