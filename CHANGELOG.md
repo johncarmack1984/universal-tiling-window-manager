@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.5.1...v0.5.2) (2026-11-05)
+
+
+### Bug Fixes
+
+* move windows when macOS leaves its lock screen shield up ([#24](https://github.com/johncarmack1984/universal-tiling-window-manager/issues/24)) ([ed00e2e](https://github.com/johncarmack1984/universal-tiling-window-manager/commit/ed00e2e6a7b604e5c1149c477d85e1d67ff93a22))
+
 ## [0.5.1](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.5.0...v0.5.1) (2026-11-02)
 
 
