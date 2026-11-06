@@ -85,9 +85,15 @@ pub fn run(
         // The file picker behind Choose configuration….
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
-            // A menu bar app: no Dock icon and no menu bar of its own.
+            // A menu bar app: no Dock icon and no menu bar of its own. Its
+            // menu's pictures follow the menu's colors, as the symbols in
+            // macOS's own menus do, and show on macOS 27, which hides a
+            // menu's pictures unless asked.
             #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            {
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                utwm_macos::menu::draw_pictures_as_templates();
+            }
 
             let handle = app.handle().clone();
             let _ = shared.app.set(handle.clone());

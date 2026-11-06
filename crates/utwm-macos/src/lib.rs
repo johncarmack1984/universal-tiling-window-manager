@@ -17,6 +17,7 @@ mod ax;
 pub mod conflicts;
 pub mod control;
 pub mod hotkeys;
+pub mod menu;
 pub mod monitors;
 pub mod permission;
 pub mod shield;

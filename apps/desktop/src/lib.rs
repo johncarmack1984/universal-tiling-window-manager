@@ -19,6 +19,8 @@ mod cli;
 mod app;
 #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 mod controller;
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+mod icons;
 #[cfg(windows)]
 mod installed;
 #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
