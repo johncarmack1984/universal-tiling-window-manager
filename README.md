@@ -85,7 +85,7 @@ just install
 | Restore | ⌃⌥⌫ | Ctrl+Alt+Backspace | `restore` |
 | Next, previous display | ⌃⌥⌘→ ⌃⌥⌘← | Ctrl+Alt+Win+Right, Left (Super on Linux) | `nextDisplay` `previousDisplay` |
 
-Press a half again and it cycles through two thirds and one third. Every action is in the menu too, with its shortcut if it has one.
+Press a half again and it cycles through two thirds and one third. Every action is in the menu too, with its shortcut if it has one and a picture of the screen with the part it puts the window in filled in, drawn from the same layout code the shortcut runs, so a configured split ratio or custom position shows where it really lands.
 
 These have no shortcut until you give them one:
 - center half: `centerHalf`;

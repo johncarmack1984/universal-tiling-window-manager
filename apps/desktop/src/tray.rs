@@ -1,17 +1,21 @@
 //! The tray icon (the menu bar icon on the Mac) and its menu, laid out like
-//! Rectangle's menu: every action with its shortcut, grouped, then the app's
-//! own switches.
+//! Rectangle's menu: every action with a picture of where it puts the window
+//! and its shortcut, grouped, then the app's own switches.
 
 use std::path::Path;
 use std::sync::mpsc::Sender;
 
-use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::image::Image;
+use tauri::menu::{
+    CheckMenuItem, IconMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu,
+};
 use tauri::tray::TrayIconBuilder;
 use utwm_config::actions::{self, ActionName};
 use utwm_config::bindings::Resolved;
 use utwm_config::{ActionId, Chord, MenuGroup, Platform, Target};
 
 use crate::controller::Command;
+use crate::icons::{self, Picture};
 use crate::platform;
 
 type R = tauri::DynRuntime;
@@ -77,6 +81,13 @@ fn tilde(path: &Path, home: &Path) -> String {
         Ok(rest) => Path::new("~").join(rest).display().to_string(),
         Err(_) => path.display().to_string(),
     }
+}
+
+/// `text` as a menu should show it. Menus take an `&` to mark the letter
+/// after it as the item's access key, and the Mac drops it, so "Fill & Tile"
+/// came out "Fill  Tile"; a doubled one shows as written.
+fn literal(text: &str) -> String {
+    text.replace('&', "&&")
 }
 
 /// A chord the way this platform's keyboard labels it: `Ctrl+Alt+Left` on
@@ -174,21 +185,37 @@ fn command_for(id: &str) -> Option<Command> {
     }
 }
 
-/// Appends a menu item for one action, showing its shortcut the way the
-/// platform's menus do.
+/// A picture drawn the way this platform's menus show one.
+fn image(picture: Option<Picture>) -> Option<Image<'static>> {
+    let icon = icons::draw(picture?, icons::Style::MENU);
+    Some(Image::new_owned(icon.rgba, icon.width, icon.height))
+}
+
+/// Appends a menu item for one action, with its picture, and its shortcut
+/// shown the way the platform's menus do.
 fn append_action(
     submenu: &Submenu<R>,
     app: &tauri::AppHandle,
     id: String,
     label: &str,
+    picture: Option<Picture>,
     chord: Option<Chord>,
 ) -> tauri::Result<()> {
+    let icon = image(picture);
+    let label = literal(label);
     #[cfg(target_os = "macos")]
     if let Some(accelerator) = chord.and_then(accelerator) {
         // macOS draws the shortcut right-aligned in its own glyphs. The
         // native item is only made on append, so that is where a key the menu
         // can't draw would fail; the plain label below stands in.
-        let item = MenuItem::with_id(app, id.clone(), label, true, Some(accelerator))?;
+        let item = IconMenuItem::with_id(
+            app,
+            id.clone(),
+            &label,
+            true,
+            icon.clone(),
+            Some(accelerator),
+        )?;
         if submenu.append(&item).is_ok() {
             return Ok(());
         }
@@ -198,9 +225,16 @@ fn append_action(
         Some(chord) if cfg!(windows) => format!("{label}\t{}", chord_label(chord)),
         // GNOME's tray draws a tab as plain space and shows no accelerators.
         Some(chord) => format!("{label} ({})", chord_label(chord)),
-        None => label.to_owned(),
+        None => label,
     };
-    submenu.append(&MenuItem::with_id(app, id, text, true, None::<&str>)?)
+    submenu.append(&IconMenuItem::with_id(
+        app,
+        id,
+        text,
+        true,
+        icon,
+        None::<&str>,
+    )?)
 }
 
 /// The chord as a menu accelerator. `None` for keys a macOS menu can't draw
@@ -270,7 +304,7 @@ fn build_menu(
     menu.append(&MenuItem::with_id(
         app,
         "status",
-        &status.text,
+        literal(&status.text),
         status.clickable,
         None::<&str>,
     )?)?;
@@ -287,8 +321,10 @@ fn build_menu(
         MenuGroup::Eighths,
         MenuGroup::Pro,
     ];
+    let settings = &config.settings;
     for group in groups {
-        let submenu = Submenu::new(app, group.label(), true)?;
+        let icon = image(icons::for_group(group, settings));
+        let submenu = Submenu::new_with_icon(app, literal(group.label()), true, icon)?;
         for action in ActionId::all()
             .into_iter()
             .filter(|action| action.group() == group)
@@ -299,6 +335,7 @@ fn build_menu(
                 app,
                 format!("action:{}", action.name()),
                 &action.label(),
+                icons::for_action(action, settings),
                 chord,
             )?;
         }
@@ -310,11 +347,20 @@ fn build_menu(
         .iter()
         .filter(|spec| !config.hidden_specs.contains(&spec.id))
         .collect();
-    if !visible_specs.is_empty() {
-        let custom = Submenu::new(app, "Custom", true)?;
+    if let Some(first) = visible_specs.first() {
+        // The first custom position stands for them all.
+        let icon = image(icons::for_spec(first, settings));
+        let custom = Submenu::new_with_icon(app, "Custom", true, icon)?;
         for spec in visible_specs {
             let chord = config.chord_for(Target::Spec(spec.id));
-            append_action(&custom, app, format!("spec:{}", spec.id), &spec.name, chord)?;
+            append_action(
+                &custom,
+                app,
+                format!("spec:{}", spec.id),
+                &spec.name,
+                icons::for_spec(spec, settings),
+                chord,
+            )?;
         }
         menu.append(&custom)?;
     }
@@ -353,7 +399,7 @@ fn build_menu(
         menu.append(&MenuItem::with_id(
             app,
             "update",
-            &updates.text,
+            literal(&updates.text),
             updates.enabled,
             None::<&str>,
         )?)?;
@@ -369,6 +415,12 @@ mod tests {
 
     fn accelerator_for(text: &str) -> Option<String> {
         accelerator(Chord::parse(text).expect("parses"))
+    }
+
+    #[test]
+    fn ampersands_show_as_written() {
+        assert_eq!(literal("Fill & Tile"), "Fill && Tile");
+        assert_eq!(literal("Left 1/3 Below Movie"), "Left 1/3 Below Movie");
     }
 
     #[test]
