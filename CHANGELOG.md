@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.5.2...v0.6.0) (2026-11-06)
+
+
+### Features
+
+* show where each action puts the window in the tray menu ([#26](https://github.com/johncarmack1984/universal-tiling-window-manager/issues/26)) ([802632d](https://github.com/johncarmack1984/universal-tiling-window-manager/commit/802632d34b641ad561deae61cff47fb6e7d52852))
+
 ## [0.5.2](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.5.1...v0.5.2) (2026-11-05)
 
 
