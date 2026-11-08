@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.6.0...v0.7.0) (2026-11-08)
+
+
+### Features
+
+* show every group's pictures in the GNOME menu ([#28](https://github.com/johncarmack1984/universal-tiling-window-manager/issues/28)) ([c10d251](https://github.com/johncarmack1984/universal-tiling-window-manager/commit/c10d251e8fdda45c79c3036450df130340dc5a0b))
+
 ## [0.6.0](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.5.2...v0.6.0) (2026-11-06)
 
 
