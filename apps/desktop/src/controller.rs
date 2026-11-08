@@ -49,7 +49,8 @@ pub enum Command {
     /// The menu's first line was clicked; it takes the step it describes.
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     FixStatus,
-    /// GNOME can show a tray at last, so the tray is made.
+    /// GNOME can show a tray icon now, which shows the menu wherever the
+    /// GNOME Shell extension doesn't draw it.
     #[cfg(target_os = "linux")]
     TrayHostAppeared,
     /// A moment after GNOME's shortcuts were freed: whatever is still
@@ -115,6 +116,11 @@ pub struct Controller {
     /// longer offers.
     #[cfg(target_os = "linux")]
     unfreeable: HashSet<Chord>,
+    /// Whether GNOME can show a tray icon: an AppIndicator extension is
+    /// there. The tray is made only once it can, and only while the GNOME
+    /// Shell extension doesn't draw the menu itself.
+    #[cfg(target_os = "linux")]
+    tray_host: bool,
     /// The update thread, when this copy was installed the way a release
     /// installs.
     updates: Option<updates::Updates>,
@@ -153,6 +159,8 @@ impl Controller {
             freed: Vec::new(),
             #[cfg(target_os = "linux")]
             unfreeable: HashSet::new(),
+            #[cfg(target_os = "linux")]
+            tray_host: false,
             #[cfg(windows)]
             picking: false,
             updates,
@@ -197,6 +205,8 @@ impl Controller {
         ))
     }
 
+    /// For the tray made at startup; on Linux the controller makes it.
+    #[cfg(not(target_os = "linux"))]
     pub fn config(&self) -> &Arc<Resolved> {
         &self.config
     }
@@ -210,6 +220,11 @@ impl Controller {
     }
 
     pub fn run(mut self, commands: Receiver<Command>) {
+        // On Linux the menu goes up here rather than with the tray: in the
+        // top bar if the GNOME Shell extension draws it, which takes asking
+        // the extension, a call that stays off the main thread.
+        #[cfg(target_os = "linux")]
+        self.refresh_tray();
         while let Ok(command) = commands.recv() {
             match command {
                 Command::Binding(index) => self.binding(index),
@@ -248,7 +263,10 @@ impl Controller {
                 #[cfg(target_os = "linux")]
                 Command::FixStatus => self.fix_status(),
                 #[cfg(target_os = "linux")]
-                Command::TrayHostAppeared => self.create_tray(),
+                Command::TrayHostAppeared => {
+                    self.tray_host = true;
+                    self.refresh_tray();
+                }
                 #[cfg(target_os = "linux")]
                 Command::CheckFreed => self.check_freed(),
                 Command::CheckForUpdates => self.check_for_updates(),
@@ -733,14 +751,18 @@ impl Controller {
     }
 
     fn refresh_tray(&self) {
-        if let Some(app) = self.shared.app.get() {
-            let paused = self.shared.paused.load(Ordering::SeqCst);
-            let updates = self.updates_line();
-            if let Err(error) =
-                tray::refresh(app, &self.config, &self.status(), paused, updates.as_ref())
-            {
-                tracing::warn!(%error, "could not update the tray menu");
-            }
+        let Some(app) = self.shared.app.get() else {
+            return;
+        };
+        let paused = self.shared.paused.load(Ordering::SeqCst);
+        let updates = self.updates_line();
+        match tray::refresh(app, &self.config, &self.status(), paused, updates.as_ref()) {
+            // Neither the GNOME Shell extension nor a tray shows it yet: the
+            // tray does once GNOME can show one.
+            #[cfg(target_os = "linux")]
+            Ok(false) if self.tray_host => self.create_tray(),
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "could not update the tray menu"),
         }
     }
 
@@ -896,7 +918,7 @@ impl Controller {
         self.refused = refused;
     }
 
-    /// Makes the tray, once GNOME can show one.
+    /// Makes the tray, for the menu the GNOME Shell extension doesn't draw.
     #[cfg(target_os = "linux")]
     fn create_tray(&self) {
         let Some(app) = self.shared.app.get() else {

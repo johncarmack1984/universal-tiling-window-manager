@@ -1,6 +1,6 @@
 [package]
 name = "utwm-linux"
-description = "The Linux side: a GNOME Shell extension, driven over D-Bus, that grabs the shortcuts and finds, measures and moves windows"
+description = "The Linux side: a GNOME Shell extension, driven over D-Bus, that grabs the shortcuts, finds, measures and moves windows, and draws the menu"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

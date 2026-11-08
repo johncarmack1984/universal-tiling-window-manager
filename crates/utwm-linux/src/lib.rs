@@ -3,8 +3,9 @@
 //! Wayland lets no ordinary app move another app's windows or grab keys of its
 //! own, so this crate drives a small GNOME Shell extension
 //! (`gnome-extension/`) over the session bus. The extension reports the
-//! displays and windows and carries out moves and key grabs; deciding which
-//! windows to manage stays here.
+//! displays and windows, carries out moves and key grabs, and draws the
+//! app's menu in the top bar as the app describes it; deciding which windows
+//! to manage stays here.
 //!
 //! Like `utwm-windows` and `utwm-macos`, every function here is a thin, checked
 //! wrapper; the other decisions live in `utwm-config` (which shortcut means
@@ -20,6 +21,7 @@ pub mod control;
 pub mod extension;
 mod gsettings;
 pub mod install;
+pub mod menu;
 pub mod monitors;
 pub mod notify;
 mod shell;

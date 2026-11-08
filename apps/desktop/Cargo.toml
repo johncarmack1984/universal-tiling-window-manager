@@ -60,6 +60,9 @@ utwm-macos.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 utwm-linux.workspace = true
+# Encodes the menu's pictures for the GNOME Shell extension, which draws the
+# menu once it runs. tray-icon builds it already, at this version.
+png = "0.18"
 # Installs releases (src/updates.rs). Linux's own TLS is OpenSSL, whose
 # library changes its name with each major version, so a release linked to
 # one wouldn't start once a distribution moves to the next. rustls goes

@@ -224,6 +224,15 @@ impl Style {
         scale: 2,
         palette: Palette::Colored,
     };
+    /// The menu the GNOME Shell extension draws shows a picture 32 pixels
+    /// across, two to each of its points, and twice that on a HiDPI screen:
+    /// drawn at four, it stays sharp on both.
+    #[cfg(target_os = "linux")]
+    pub const SHELL: Self = Self {
+        points: 16,
+        scale: 4,
+        palette: Palette::Colored,
+    };
 }
 
 /// A drawn picture: RGBA rows from the top, alpha not premultiplied.
@@ -231,6 +240,29 @@ pub struct Icon {
     pub rgba: Vec<u8>,
     pub width: u32,
     pub height: u32,
+}
+
+impl Icon {
+    /// The picture as a PNG file, the form the GNOME Shell extension takes
+    /// it in.
+    #[cfg(target_os = "linux")]
+    pub fn png(&self) -> Option<Vec<u8>> {
+        let mut file = Vec::new();
+        let mut encoder = png::Encoder::new(&mut file, self.width, self.height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let written = encoder.write_header().and_then(|mut writer| {
+            writer.write_image_data(&self.rgba)?;
+            writer.finish()
+        });
+        match written {
+            Ok(()) => Some(file),
+            Err(error) => {
+                tracing::warn!(%error, "could not encode a menu picture");
+                None
+            }
+        }
+    }
 }
 
 /// The screen every picture draws, in points. Its outline is a point thick
