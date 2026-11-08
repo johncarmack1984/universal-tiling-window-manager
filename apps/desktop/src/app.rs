@@ -118,19 +118,22 @@ pub fn run(
                 refused,
                 updates,
             );
-            let tray = tray::create(
+            #[cfg(not(target_os = "linux"))]
+            tray::create(
                 &handle,
                 controller.config(),
                 &controller.status(),
                 false,
                 controller.updates_line().as_ref(),
                 commands.clone(),
-            );
-            // GNOME shows tray icons only through an AppIndicator extension,
-            // which may start after this app at login, or not be there at all.
+            )?;
+            // On Linux the controller puts the menu up as it starts: in the
+            // top bar if the GNOME Shell extension draws it, otherwise in the
+            // tray. GNOME shows tray icons only through an AppIndicator
+            // extension, which may start after this app at login, or not be
+            // there at all.
             #[cfg(target_os = "linux")]
-            if let Err(error) = tray {
-                tracing::warn!(%error, "no tray yet; it appears once GNOME can show one");
+            {
                 let commands = commands.clone();
                 std::thread::Builder::new()
                     .name("tray-host".to_owned())
@@ -140,8 +143,6 @@ pub fn run(
                         }
                     })?;
             }
-            #[cfg(not(target_os = "linux"))]
-            tray?;
             std::thread::Builder::new()
                 .name("controller".to_owned())
                 .spawn(move || controller.run(receiver))?;
@@ -156,11 +157,12 @@ pub fn run(
         } => api.prevent_exit(),
         #[cfg(target_os = "macos")]
         RunEvent::Exit => utwm_macos::control::remove_socket(),
-        // Gives every key back at once rather than when GNOME Shell notices
-        // this process has gone.
+        // Gives every key back, and takes the menu out of the top bar, at
+        // once rather than when GNOME Shell notices this process has gone.
         #[cfg(target_os = "linux")]
         RunEvent::Exit => {
             utwm_linux::shortcuts::release();
+            utwm_linux::menu::remove();
             utwm_linux::control::remove_socket();
         }
         _ => {}
@@ -247,17 +249,17 @@ fn listen(
 #[cfg(target_os = "linux")]
 struct ControlGuard(#[allow(dead_code)] utwm_linux::control::Listener);
 
-/// Starts listening for the GNOME Shell extension and the shortcuts it grabs,
-/// and opens the command line's socket. Nothing is grabbed until the extension
-/// is there: the menu's first line follows it, and the bindings go to it as
-/// soon as it appears.
+/// Starts listening for the GNOME Shell extension, the shortcuts it grabs and
+/// the clicks on the menu it draws, and opens the command line's socket.
+/// Nothing is grabbed until the extension is there: the menu's first line
+/// follows it, and the bindings go to it as soon as it appears.
 #[cfg(target_os = "linux")]
 fn listen(
     app: &mut tauri::App,
     chords: Vec<Chord>,
     commands: &Sender<Command>,
 ) -> Result<(Shortcuts, Vec<Chord>), Box<dyn std::error::Error>> {
-    use utwm_linux::{control, extension};
+    use utwm_linux::{control, extension, menu};
 
     // Puts back this app's copy of the extension where the installed files
     // differ, and drops an update GNOME staged for it from elsewhere.
@@ -267,6 +269,7 @@ fn listen(
     utwm_linux::install::refresh(crate::platform::ICONS);
     let (shortcuts, refused) =
         Shortcuts::start(chords, controller::shortcuts_reporter(commands.clone()))?;
+    menu::listen(tray::shell_menu_reporter(commands.clone()))?;
     let listener = control::Listener::start(controller::control_reporter(commands.clone()))?;
     app.manage(ControlGuard(listener));
     Ok((shortcuts, refused))

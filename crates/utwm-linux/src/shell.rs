@@ -14,7 +14,13 @@ use zbus::zvariant::{DeserializeDict, Type};
 
 /// The interface this build speaks: the extension's `API_VERSION`, bumped
 /// together whenever the interface changes.
-pub const API_VERSION: u32 = 1;
+pub const API_VERSION: u32 = 2;
+
+/// The oldest interface this build still drives. Version 2 added the menu
+/// and changed nothing else, so a copy of the extension from before it still
+/// moves windows and grabs keys until the next log-in loads the new one; the
+/// menu stays in the tray until then.
+pub const MIN_API_VERSION: u32 = 1;
 
 pub(crate) const BUS_NAME: &str = "com.johncarmack.UniversalTilingWindowManager.Shell";
 pub(crate) const OBJECT_PATH: &str = "/com/johncarmack/UniversalTilingWindowManager/Shell";
@@ -194,6 +200,17 @@ pub(crate) fn activate(window: u64) -> Result<()> {
 
 pub(crate) fn set_bindings(generation: u32, accelerators: &[String]) -> Result<Vec<bool>> {
     Ok(bridge()?.call("SetBindings", &(generation, accelerators))?)
+}
+
+pub(crate) fn set_menu<T>(name: &str, icon: &[u8], items: &[T]) -> Result<()>
+where
+    T: serde::Serialize + Type,
+{
+    Ok(bridge()?.call("SetMenu", &(name, icon, items))?)
+}
+
+pub(crate) fn remove_menu() -> Result<()> {
+    Ok(bridge()?.call("RemoveMenu", &())?)
 }
 
 #[cfg(test)]

@@ -49,8 +49,8 @@ pub enum State {
     /// It doesn't support this version of GNOME, which is the text.
     OutOfDate(String),
     /// Running, but not the copy this app carries. A log-out and log-in loads
-    /// the new one; until then it works if it still speaks this app's
-    /// interface (`compatible`).
+    /// the new one; until then it works if it speaks an interface this app
+    /// still drives (`compatible`).
     Stale {
         compatible: bool,
     },
@@ -136,7 +136,7 @@ fn running() -> State {
             State::Active
         }
         (Ok(version), _) => State::Stale {
-            compatible: version == shell::API_VERSION,
+            compatible: (shell::MIN_API_VERSION..=shell::API_VERSION).contains(&version),
         },
         (Err(error), _) => State::Failed(format!("its bridge isn't answering ({error:?})")),
     }
@@ -368,6 +368,39 @@ mod tests {
             assert!(
                 function_keys.contains(&keycode),
                 "extension.js doesn't take F{n} (keycode {keycode}) on its own"
+            );
+        }
+    }
+
+    #[test]
+    fn the_extension_draws_every_menu_the_app_sends() {
+        // It refuses a menu whole when it has too many items, and drops a
+        // picture that's too big.
+        assert!(
+            EXTENSION_JS.contains(&format!(
+                "const MAX_MENU_ITEMS = {};",
+                crate::menu::MAX_ITEMS
+            )),
+            "MAX_MENU_ITEMS differs between extension.js and menu.rs"
+        );
+        assert!(
+            EXTENSION_JS.contains(&format!(
+                "const MAX_IMAGE_BYTES = {};",
+                crate::menu::MAX_IMAGE_BYTES
+            )),
+            "MAX_IMAGE_BYTES differs between extension.js and menu.rs"
+        );
+        assert!(
+            EXTENSION_JS.contains(&format!(
+                "const PICTURE_SIZE = {};",
+                crate::menu::PICTURE_SIZE
+            )),
+            "PICTURE_SIZE differs between extension.js and menu.rs"
+        );
+        for kind in ["text", "check", "separator", "group", "action"] {
+            assert!(
+                EXTENSION_JS.contains(&format!("'{kind}'")),
+                "extension.js doesn't draw a {kind}"
             );
         }
     }

@@ -53,7 +53,7 @@ chmod +x ~/Downloads/Window-Manager_*_x86_64
 
 The first line installs WebKitGTK, the one library the app needs that a desktop may not have already. `install` puts the app in `~/.local/bin`, for your user only, with a desktop entry, so it opens from the app grid like any other app, and starts it in the tray; the download can go once it has. It is developed and tested on Ubuntu 26.04 with GNOME 50, on x86-64.
 
-GNOME lets no app move other apps' windows or grab shortcuts of its own, so the app works through a small GNOME Shell extension that it carries and installs, `universal-tiling-window-manager@johncarmack.com`. GNOME Shell only starts a new extension when you log in, so log out and back in once after the first install. Until the extension runs, the first line of the app's menu says what's left, and clicking it takes the next step: installing the extension, switching it on, or logging out. The menu shows in the top bar through Ubuntu's AppIndicator support; on other GNOMEs, install the AppIndicator and KStatusNotifierItem Support extension first. Tick **Start at login** in the menu to have it start with GNOME.
+GNOME lets no app move other apps' windows or grab shortcuts of its own, so the app works through a small GNOME Shell extension that it carries and installs, `universal-tiling-window-manager@johncarmack.com`. GNOME Shell only starts a new extension when you log in, so log out and back in once after the first install. Until the extension runs, the first line of the app's menu says what's left, and clicking it takes the next step: installing the extension, switching it on, or logging out. Once the extension runs, it draws the app's menu in the top bar itself. Until then the menu shows through Ubuntu's AppIndicator support; on other GNOMEs, install the AppIndicator and KStatusNotifierItem Support extension first. Tick **Start at login** in the menu to have it start with GNOME.
 
 GNOME keeps some of the same keys for its own shortcuts: Ctrl+Alt with an arrow switches workspaces, Ctrl+Alt+Shift+Up moves a window to the workspace above, Ctrl+Alt+D shows the desktop and Ctrl+Alt+T opens a terminal. While GNOME holds them, the menu's first line says how many of the app's shortcuts are GNOME's; clicking it takes just those keys out of GNOME's shortcuts and gives them to the app, leaving GNOME its other keys for the same things (Super+Page Up still switches workspaces). Settings → Keyboard → View and Customize Shortcuts puts any of them back, or `[linux.shortcuts]` in config.toml moves the app's action to another key instead.
 
@@ -85,7 +85,7 @@ just install
 | Restore | ⌃⌥⌫ | Ctrl+Alt+Backspace | `restore` |
 | Next, previous display | ⌃⌥⌘→ ⌃⌥⌘← | Ctrl+Alt+Win+Right, Left (Super on Linux) | `nextDisplay` `previousDisplay` |
 
-Press a half again and it cycles through two thirds and one third. Every action is in the menu too, with its shortcut if it has one and a picture of the screen with the part it puts the window in filled in, drawn from the same layout code the shortcut runs, so a configured split ratio or custom position shows where it really lands.
+Press a half again and it cycles through two thirds and one third. Every action is in the menu too, with its shortcut if it has one and a picture of the screen with the part it puts the window in filled in, drawn from the same layout code the shortcut runs, so a configured split ratio or custom position shows where it really lands. On GNOME, whose menus don't open sideways, each group is a row of these pictures, and pointing at one, or moving to it with the arrow keys, shows its name and shortcut.
 
 These have no shortcut until you give them one:
 - center half: `centerHalf`;
@@ -209,7 +209,7 @@ The log is at `%LOCALAPPDATA%\window-manager\log.txt` on Windows, `~/Library/Log
 | `crates/utwm-layout` | Where each action puts a window; pure, so its tests run anywhere |
 | `crates/utwm-windows` | Win32: the low-level keyboard hook, finding and placing windows, displays, start at login |
 | `crates/utwm-macos` | macOS: Carbon hot keys, finding and placing windows through the Accessibility API, displays, start at login (a LaunchAgent) |
-| `crates/utwm-linux` | Linux under GNOME: the GNOME Shell extension (`gnome-extension/`) that grabs the shortcuts and moves windows, the D-Bus side that drives it, displays, freeing GNOME's own shortcuts, start at login, and installing under `~/.local` |
+| `crates/utwm-linux` | Linux under GNOME: the GNOME Shell extension (`gnome-extension/`) that grabs the shortcuts, moves windows and draws the menu, the D-Bus side that drives it, displays, freeing GNOME's own shortcuts, start at login, and installing under `~/.local` |
 | `apps/desktop` | The Tauri 3 tray app and the command line, one codebase for all three platforms |
 | `tools/bundle` | `utwm-bundle`, which builds the Mac app bundle (`just bundle`), for both architectures with `--universal`, and installs it into /Applications (`just install`), or on Linux lays out and installs the app under `~/.local` |
 | `tools/e2e` | The end-to-end checks (`utwm-e2e`, one per platform), and `utwm-inject`, which presses keys by scan code on Windows the way RustDesk does |
