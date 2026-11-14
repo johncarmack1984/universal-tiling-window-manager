@@ -121,6 +121,9 @@ struct State {
     chords: Vec<Chord>,
     registered: Vec<EventHotKeyRef>,
     paused: bool,
+    /// Stepped aside for the app in front, which sends every key to the
+    /// machine it controls (see [`crate::front`]).
+    aside: bool,
     /// Bumped on every re-registration, and carried in each hot key's id, so
     /// a press queued before new bindings arrived can't run the wrong one.
     generation: u32,
@@ -170,6 +173,7 @@ impl Hotkeys {
                     chords,
                     registered: Vec::new(),
                     paused: false,
+                    aside: false,
                     generation: 0,
                 });
                 state.register()
@@ -200,6 +204,18 @@ impl Hotkeys {
             })
         })
     }
+
+    /// Stepped aside, as when paused, no shortcut is registered, so the app
+    /// in front gets every key. Returns the chords macOS refused once back.
+    pub fn set_aside(&self, aside: bool) -> Vec<Chord> {
+        dispatch2::run_on_main(|_| {
+            with_state(|state| {
+                state.aside = aside;
+                state.unregister();
+                state.register()
+            })
+        })
+    }
 }
 
 fn with_state(f: impl FnOnce(&mut State) -> Vec<Chord>) -> Vec<Chord> {
@@ -215,10 +231,11 @@ impl State {
         }
     }
 
-    /// Registers every chord unless paused; returns those macOS refused.
+    /// Registers every chord unless paused or stepped aside; returns those
+    /// macOS refused.
     fn register(&mut self) -> Vec<Chord> {
         self.generation = self.generation.wrapping_add(1) & 0xFFFF;
-        if self.paused {
+        if self.paused || self.aside {
             return Vec::new();
         }
         let mut refused = Vec::new();

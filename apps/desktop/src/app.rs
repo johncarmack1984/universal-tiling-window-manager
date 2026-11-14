@@ -212,7 +212,7 @@ fn listen(
     chords: Vec<Chord>,
     commands: &Sender<Command>,
 ) -> Result<(Shortcuts, Vec<Chord>), Box<dyn std::error::Error>> {
-    use utwm_macos::{conflicts, control, permission, window};
+    use utwm_macos::{conflicts, control, front, permission, window};
 
     window::limit_waits();
     if !permission::is_granted() {
@@ -222,6 +222,9 @@ fn listen(
         Shortcuts::start(chords, controller::hotkeys_reporter(commands.clone()))?;
     let listener = control::Listener::start(controller::control_reporter(commands.clone()))?;
     app.manage(ControlGuard(listener));
+    // A remote-control app in front gets the shortcuts, for the machine it
+    // controls.
+    front::watch(controller::front_reporter(commands.clone()));
 
     // The menu's first line follows Accessibility access and any Rectangle
     // still running; neither announces itself, so look every couple of seconds.

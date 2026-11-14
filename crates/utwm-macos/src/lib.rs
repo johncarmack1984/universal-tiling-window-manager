@@ -16,6 +16,7 @@ pub mod autostart;
 mod ax;
 pub mod conflicts;
 pub mod control;
+pub mod front;
 pub mod hotkeys;
 pub mod menu;
 pub mod monitors;
