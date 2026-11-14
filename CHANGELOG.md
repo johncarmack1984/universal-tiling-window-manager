@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.7.0...v0.7.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* leave the shortcuts to remote-control apps on the Mac ([#30](https://github.com/johncarmack1984/universal-tiling-window-manager/issues/30)) ([5faefd1](https://github.com/johncarmack1984/universal-tiling-window-manager/commit/5faefd173ffeb048acae61c8247a970c43e18bf3))
+
 ## [0.7.0](https://github.com/johncarmack1984/universal-tiling-window-manager/compare/v0.6.0...v0.7.0) (2026-11-08)
 
 
