@@ -30,6 +30,9 @@ pub enum Command {
     Menu(Target),
     #[cfg(windows)]
     System(SystemEvent),
+    /// Another app came to the front: its bundle id, if it has one.
+    #[cfg(target_os = "macos")]
+    FrontApp(Option<String>),
     /// The command line's `quit`, `reload` or `pause`.
     Control(Control),
     /// A configuration file changed, or a reload was asked for.
@@ -100,6 +103,10 @@ pub struct Controller {
     /// menu's first line names until a shortcut finds a window again.
     #[cfg(target_os = "macos")]
     withheld: Option<String>,
+    /// The remote-control app in front, which the hot keys stepped aside for
+    /// so that its shortcuts reach the machine it controls.
+    #[cfg(target_os = "macos")]
+    aside_for: Option<String>,
     /// The GNOME settings holding refused chords, which the menu offers to
     /// free.
     #[cfg(target_os = "linux")]
@@ -153,6 +160,8 @@ impl Controller {
             asked_for_access: false,
             #[cfg(target_os = "macos")]
             withheld: None,
+            #[cfg(target_os = "macos")]
+            aside_for: None,
             #[cfg(target_os = "linux")]
             gnome_held: Vec::new(),
             #[cfg(target_os = "linux")]
@@ -235,6 +244,8 @@ impl Controller {
                 }
                 #[cfg(windows)]
                 Command::System(event) => self.system(event),
+                #[cfg(target_os = "macos")]
+                Command::FrontApp(bundle_id) => self.front_app(bundle_id),
                 Command::Control(control) => self.control(control),
                 Command::Reload => self.reload(),
                 Command::TogglePause => self.toggle_pause(),
@@ -331,6 +342,30 @@ impl Controller {
             self.refresh_tray();
         }
         found.ok()
+    }
+
+    /// Steps the hot keys aside while a remote-control app is in front, so
+    /// its shortcuts reach the machine it controls even when macOS hides
+    /// keys from it, and takes them back once another app is.
+    #[cfg(target_os = "macos")]
+    fn front_app(&mut self, bundle_id: Option<String>) {
+        tracing::debug!(app = bundle_id.as_deref().unwrap_or("?"), "in front");
+        let was_aside = self.aside_for.is_some();
+        self.aside_for = bundle_id.filter(|id| utwm_macos::front::is_remote_control(id));
+        if self.aside_for.is_some() == was_aside {
+            return;
+        }
+        match &self.aside_for {
+            Some(app) => {
+                tracing::info!(%app, "a remote-control app is in front; its shortcuts go to it")
+            }
+            None => tracing::info!("the shortcuts are this Mac's again"),
+        }
+        let refused = self.shortcuts.set_aside(self.aside_for.is_some());
+        if refused != self.refused {
+            self.refused = refused;
+            self.refresh_tray();
+        }
     }
 
     fn control(&mut self, control: Control) {
@@ -968,6 +1003,14 @@ pub fn events_reporter(sender: Sender<Command>) -> utwm_windows::events::Reporte
 pub fn hotkeys_reporter(sender: Sender<Command>) -> utwm_macos::hotkeys::Reporter {
     Box::new(move |index| {
         let _ = sender.send(Command::Binding(index));
+    })
+}
+
+/// Forwards each app that comes to the front into the controller's channel.
+#[cfg(target_os = "macos")]
+pub fn front_reporter(sender: Sender<Command>) -> utwm_macos::front::Reporter {
+    Box::new(move |bundle_id| {
+        let _ = sender.send(Command::FrontApp(bundle_id));
     })
 }
 

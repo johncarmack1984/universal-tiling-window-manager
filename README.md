@@ -156,6 +156,8 @@ On the Mac, quit Rectangle Pro and turn off its launch at login, since both answ
 
 On the Mac nothing translates: a shortcut is exactly the key and modifiers configured, registered as a Carbon hot key. Registering them takes no permission, and the app never sees any other keystroke.
 
+While RustDesk, Screen Sharing or Windows App is in front on the Mac, the app lets go of its shortcuts, so they reach the machine being controlled. RustDesk catches keys with an event tap, ahead of any shortcut, but while any app holds Secure Input (a focused password field, a terminal's Secure Keyboard Entry, or an app that never let go of it) macOS hides keystrokes from event taps and still fires shortcuts; holding them then, the app would answer a shortcut meant for the other machine, which would get only its modifiers.
+
 On Windows each Mac shortcut binds to the Windows key in the same physical position, not the key with the same label, which is also how macOS key codes work. Control becomes Ctrl, Option becomes Alt, Command becomes Win, and Shift stays Shift: what a Mac keyboard sends to Windows, and what RustDesk delivers in its default Map mode when a Mac drives the Windows machine. Keypad keys stay keypad keys whatever the NumLock state, and Home stays distinct from keypad 7; matching is by scan code, which virtual-key codes can't do once NumLock is off.
 
 Keys in the NumLock, CapsLock and ScrollLock positions are never bound on Windows: a binding would toggle the lock, and RustDesk taps NumLock on its own to keep lock state in sync. On a Mac keyboard that is the keypad's Clear key, which the Mac binds as usual.
@@ -177,7 +179,7 @@ Limits worth knowing:
 - **App shortcuts.** The shortcuts are global, so they take precedence over apps that use the same keys, such as VS Code's Ctrl+Alt+Up and Down on Windows.
 - **Full screen.** On the Mac, windows in full screen (in a Space of their own), minimized windows and sheets are left alone. On Linux, full-screen and minimized windows, and dialogs attached to their window, are left alone.
 - **GNOME only.** On Linux the app works under GNOME Shell; other desktops get a line in its menu saying they aren't supported yet.
-- **Apps that inhibit shortcuts.** On GNOME, an app that takes all keys while it has the focus, as remote desktop and virtual machine apps do, gets the shortcuts too.
+- **Remote desktops.** An app that controls another machine gets the shortcuts while it's in front, so they reach that machine: on the Mac, RustDesk, Screen Sharing and Windows App; on GNOME, any app that takes all keys while it has the focus, as remote desktop and virtual machine apps do.
 
 ## Command line
 
